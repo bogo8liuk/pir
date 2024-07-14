@@ -1,0 +1,41 @@
+str_lit_start_keyword = _{ "\"" }
+str_lit_end_keyword = _{ "\"" }
+char_lit_start_keyword = _{ "'" }
+char_lit_end_keyword = _{ "'" }
+
+WHITESPACE = _{ " " | "\t" | "\n" }
+multiline_comment = _{ "/*" ~ ANY* ~ "*/" }
+COMMENT = _{
+      ("//" ~ (!"\n" ~ ANY)*)
+    | multiline_comment
+}
+
+char = {
+      !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "b" | "f" | "n" | "r" | "t")
+    // | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+string_literal = ${ str_lit_start_keyword ~ char* ~ str_lit_end_keyword }
+char_literal = ${ char_lit_start_keyword ~ char ~ char_lit_end_keyword }
+int_literal = { ("+" | "-")? ~ ASCII_DIGIT+ }
+float_literal = { ("+" | "-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+
+literal = {
+      string_literal
+	| char_literal
+    | float_literal
+    | int_literal
+}
+
+value = {
+	  literal
+}
+
+expression = {
+	  value
+}
+
+process = {
+	  SOI ~ expression ~ EOI
+}
