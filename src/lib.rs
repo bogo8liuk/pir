@@ -1,8 +1,8 @@
 use std::env;
 
-mod interpreter;
+pub mod interpreter;
 
-fn main() {
+pub fn interpreter_exe() {
     let args = env::args().collect::<Vec<String>>();
     let path = &args[1];
     interpreter::execute(path)
