@@ -93,6 +93,20 @@ fn make_literal(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
                 |i| Ok(i),
             )
         }
+        Rule::float_literal => {
+            let lit_res = make_f32_literal(pairs_clone);
+            lit_res.map_or_else(
+                |p| {
+                    Err(pest::error::Error::new_from_span(
+                        pest::error::ErrorVariant::CustomError {
+                            message: p.to_string(),
+                        },
+                        pair.as_span(),
+                    ))
+                },
+                |fl| Ok(fl),
+            )
+        }
         _ => unreachable!("Unexpected syntax error, string literal rule should be matched"), //Result::Err(Err(pair)),
     }
 }
@@ -118,6 +132,8 @@ fn make_string_literal(pairs: Pairs<Rule>) -> ast::Value {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+
+    use pest::iterators::Pair;
 
     use super::*;
     use crate::interpreter::ast;
@@ -252,5 +268,122 @@ mod tests {
                 7
             ))))
         )
+    }
+
+    #[test]
+    fn should_parse_float_literal_correctly() {
+        assert_eq!(
+            parse("123.456"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(123.456)
+            )))
+        );
+
+        assert_eq!(
+            parse("   78.038           "),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(78.038)
+            )))
+        );
+
+        assert_eq!(
+            parse("0.450099"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(0.450099)
+            )))
+        );
+
+        assert_eq!(
+            parse("-0.4"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-0.4)
+            )))
+        );
+
+        assert_eq!(
+            parse("   -     7.05   "),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-7.05)
+            )))
+        );
+
+        assert_eq!(
+            parse("-2005.0002301"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-2005.0002301)
+            )))
+        );
+
+        assert_ne!(
+            parse("0.0001"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-2005.0002301)
+            )))
+        );
+    }
+
+    #[test]
+    fn should_not_parse_f32_literal() {
+        assert!(parse("0.").is_err());
+        assert!(parse("901.").is_err());
+        assert!(parse("02.7").is_err());
+        assert!(parse("932493092302139400.2112").is_err());
+        assert!(parse(".948").is_err());
+
+        // If new syntax will exist, just remove tests asserting errors,
+        // old ones remain right!
+        assert_ne!(
+            parse("7..4"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(7.4)
+            )))
+        );
+        assert!(parse("7..4").is_err());
+
+        assert_ne!(
+            parse("(-8).2"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-8.2)
+            )))
+        );
+        assert!(parse("(-8).2").is_err());
+
+        assert_ne!(
+            parse("7   .948"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(7.948)
+            )))
+        );
+        assert!(parse("7   .948").is_err());
+
+        assert_ne!(
+            parse("-8   .606"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-8.606)
+            )))
+        );
+        assert!(parse("-8   .606").is_err());
+
+        assert_ne!(
+            parse("-1776   .  6906"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(-1776.6906)
+            )))
+        );
+        assert!(parse("-1776   .  6906").is_err());
+
+        assert_ne!(
+            parse("6.8.7"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(68.7)
+            )))
+        );
+        assert_ne!(
+            parse("6.8.7"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(6.87)
+            )))
+        );
+        assert!(parse("6.8.7").is_err());
     }
 }
