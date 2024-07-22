@@ -10,6 +10,10 @@ COMMENT = _{
     | multiline_comment
 }
 
+// To avoid whitespaces between digits when parsing
+JOINED_ASCII_DIGITS = ${ ASCII_DIGIT+ }
+JOINED_DOTTED_SEP_ASCII_DIGITS = ${ JOINED_ASCII_DIGITS ~ "." ~ JOINED_ASCII_DIGITS }
+
 char = {
       !("\"" | "\\") ~ ANY
     | "\\" ~ ("\"" | "\\" | "b" | "f" | "n" | "r" | "t")
@@ -18,8 +22,8 @@ char = {
 
 string_literal = ${ str_lit_start_keyword ~ char* ~ str_lit_end_keyword }
 char_literal = ${ char_lit_start_keyword ~ char ~ char_lit_end_keyword }
-int_literal = { ("+" | "-")? ~ ASCII_DIGIT+ }
-float_literal = { ("+" | "-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+int_literal = { ("+" | "-")? ~ JOINED_ASCII_DIGITS }
+float_literal = { ("+" | "-")? ~ JOINED_DOTTED_SEP_ASCII_DIGITS }
 
 literal = {
       string_literal

@@ -1,4 +1,9 @@
-use std::{num::ParseIntError, str::FromStr};
+use core::num;
+use std::{
+    f32::INFINITY,
+    num::{ParseFloatError, ParseIntError},
+    str::FromStr,
+};
 
 use pest::{error::Error, iterators::Pairs, Parser};
 use pest_derive::Parser;
@@ -112,14 +117,21 @@ fn make_literal(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
 }
 
 fn make_f32_literal(pairs: Pairs<Rule>) -> Result<ast::Value, std::num::ParseFloatError> {
-    f32::from_str(pairs.as_str()).map(ast::Value::Float32)
+    let owned = remove_whitespaces(pairs);
+    let src = owned.as_str();
+    f32::from_str(src).map(ast::Value::Float32)
 }
 
 fn make_i32_literal(pairs: Pairs<Rule>) -> Result<ast::Value, ParseIntError> {
+    let owned = remove_whitespaces(pairs);
+    let src = owned.as_str();
+    i32::from_str_radix(src, 10).map(ast::Value::Int32)
+}
+
+fn remove_whitespaces(pairs: Pairs<Rule>) -> String {
     let splitted: Vec<_> = pairs.as_str().split_whitespace().collect();
     let joined = splitted.join("");
-    let src = joined.as_str();
-    i32::from_str_radix(src, 10).map(ast::Value::Int32)
+    joined.as_str().to_owned()
 }
 
 // Lifetime elision in Err type
@@ -267,7 +279,9 @@ mod tests {
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
                 7
             ))))
-        )
+        );
+
+        assert!(parse("4 2").is_err());
     }
 
     #[test]
@@ -314,20 +328,66 @@ mod tests {
             )))
         );
 
+        assert_eq!(
+            parse("02.7"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(2.7),
+            )))
+        );
+
         assert_ne!(
             parse("0.0001"),
             Ok(ast::Process::Eval(ast::Expression::Val(
                 ast::Value::Float32(-2005.0002301)
             )))
         );
+
+        println!(
+            ">>>>>>>>>>>>>>>>>>>> {:?}",
+            parse("9324920392048932084210489058709438490850932490932850.2112").unwrap()
+        );
+        assert_eq!(
+            parse("9324920392048932084210489058709438490850932490932850.2112"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(INFINITY)
+            )))
+        );
+    }
+
+    #[test]
+    fn try_parse_with_whitespace() {
+        let res1 = i32::from_str_radix("  -   42", 10);
+
+        if res1.is_err() {
+            println!(
+                "whitespace parse result of \"  -   42\" is: {}",
+                res1.as_ref().unwrap_err()
+            )
+        }
+
+        let res2 = i32::from_str_radix("  -   4  2 ", 10);
+
+        if res2.is_err() {
+            println!(
+                "whitespace parse result of \"  -   4  2 \" is: {}",
+                res2.as_ref().unwrap_err()
+            )
+        }
+
+        let res3 = i32::from_str_radix("-42", 10);
+
+        if res3.is_err() {
+            println!(
+                "whitespace parse result of \"-42\" is: {}",
+                res3.as_ref().unwrap_err()
+            )
+        }
     }
 
     #[test]
     fn should_not_parse_f32_literal() {
         assert!(parse("0.").is_err());
         assert!(parse("901.").is_err());
-        assert!(parse("02.7").is_err());
-        assert!(parse("932493092302139400.2112").is_err());
         assert!(parse(".948").is_err());
 
         // If new syntax will exist, just remove tests asserting errors,
@@ -385,5 +445,29 @@ mod tests {
             )))
         );
         assert!(parse("6.8.7").is_err());
+
+        assert_ne!(
+            parse("5.  1"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(5.1)
+            )))
+        );
+        assert!(parse("5.  1").is_err());
+
+        assert_ne!(
+            parse("5 .01"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(5.01)
+            )))
+        );
+        assert!(parse("5 .01").is_err());
+
+        assert_ne!(
+            parse("0 .  111"),
+            Ok(ast::Process::Eval(ast::Expression::Val(
+                ast::Value::Float32(0.111)
+            )))
+        );
+        assert!(parse("0 .  111").is_err());
     }
 }
