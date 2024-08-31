@@ -134,8 +134,8 @@ fn remove_whitespaces(pairs: Pairs<Rule>) -> String {
     joined.as_str().to_owned()
 }
 
-// Lifetime elision in Err type
 fn make_string_literal(pairs: Pairs<Rule>) -> ast::Value {
+    // Lifetime elision in Err type
     //Result<ast::Value, Err> {
     let str = String::from(pairs.as_str());
     ast::Value::Str(str)

@@ -1,30 +1,30 @@
 use crate::interpreter::ast;
 
-type ToEval = String;
+type ToFlush = String;
 
 pub fn eval_and_flush(process: ast::Process) {
-    let to_eval = prepare_evaluation_of_process(process);
-    let to_eval_str = to_eval.as_str();
-    println!("{}", to_eval_str)
+    let to_flush = eval_process(process);
+    let to_flush_str = to_flush.as_str();
+    println!("{}", to_flush_str)
 }
 
-pub fn prepare_evaluation_of_process(process: ast::Process) -> ToEval {
+pub fn eval_process(process: ast::Process) -> ToFlush {
     match process {
-        ast::Process::Eval(expr) => prepare_evaluation_of_expr(expr),
+        ast::Process::Eval(expr) => eval_expr(expr),
     }
 }
 
-fn prepare_evaluation_of_expr(expr: ast::Expression) -> ToEval {
+fn eval_expr(expr: ast::Expression) -> ToFlush {
     match expr {
-        ast::Expression::Val(val) => prepare_evaluation_of_value(val),
+        ast::Expression::Val(val) => eval_value(val),
     }
 }
 
-fn prepare_evaluation_of_value(val: ast::Value) -> ToEval {
+fn eval_value(val: ast::Value) -> ToFlush {
     match val {
         ast::Value::Str(str) => str,
         ast::Value::Byte(_) => todo!(),
         ast::Value::Int32(num) => num.to_string(),
-        ast::Value::Float32(_) => todo!(),
+        ast::Value::Float32(fl) => fl.to_string(),
     }
 }
