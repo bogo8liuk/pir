@@ -1,4 +1,5 @@
 mod ast;
+mod context;
 mod eval;
 mod parser;
 
