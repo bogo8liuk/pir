@@ -1,18 +1,68 @@
-str_lit_start_keyword = _{ "\"" }
-str_lit_end_keyword = _{ "\"" }
-char_lit_start_keyword = _{ "'" }
-char_lit_end_keyword = _{ "'" }
-
-WHITESPACE = _{ " " | "\t" | "\n" }
-multiline_comment = _{ "/*" ~ ANY* ~ "*/" }
-COMMENT = _{
-      ("//" ~ (!"\n" ~ ANY)*)
-    | multiline_comment
+program = _{
+	  SOI ~ process ~ EOI
 }
 
-// To avoid whitespaces between digits when parsing
-JOINED_ASCII_DIGITS = ${ ASCII_DIGIT+ }
-JOINED_DOTTED_SEP_ASCII_DIGITS = ${ JOINED_ASCII_DIGITS ~ "." ~ JOINED_ASCII_DIGITS }
+process = {
+	  loop
+	| expression
+	| channel_declaration
+}
+
+loop = {
+	  loop_keyword ~ loop_start_keyword ~ process ~ loop_end_keyword
+}
+
+loop_start_keyword = _{ "(" }
+loop_end_keyword = _{ ")" }
+
+loop_keyword = _{ "loop" }
+
+// The `$` is used to avoid something like `letx` and to pretend at least one
+// whitespace or comment between the declaration keyword and the id.
+// Unfortunately, this implies putting non semantics rules by hand, which is
+// normally done by pest with non-atomic rules. The at_least_one_non_semantics
+// would be impossible to do with non-atomic rules because the single whitespace
+// or comment must be put at the beginning and not at the end.
+channel_declaration = ${ channel_declaration_keyword ~ at_least_one_non_semantics ~
+	channel_identifier ~ non_semantics ~ proc_and ~ non_semantics ~ process
+}
+
+channel_declaration_keyword = _{ "chan" }
+
+var_identifier = { head_var_identifier_char ~ tail_var_identifier_char* }
+channel_identifier = _{ var_identifier }
+
+head_var_identifier_char = _{ ASCII_ALPHA_LOWER | "_" }
+tail_var_identifier_char = _{ ASCII_ALPHA | "_" | ASCII_DIGIT }
+
+expression = {
+	  int_expr
+	| value
+}
+
+int_expr = {
+	  num_prefix? ~ int_expr_primary ~ (num_infix ~ num_prefix? ~ int_expr_primary)*
+}
+int_expr_primary = _{ int_literal | expr_start_keyword ~ int_expr ~ expr_end_keyword }
+
+expr_start_keyword = _{ "(" }
+expr_end_keyword = _{ ")" }
+
+value = {
+	  literal
+}
+
+literal = {
+      string_literal
+    | char_literal
+    | float_literal
+    //| int_literal
+}
+
+string_literal = ${ str_lit_start_keyword ~ string_lit_char* ~ str_lit_end_keyword }
+char_literal = ${ char_lit_start_keyword ~ char_lit_char ~ char_lit_end_keyword }
+int_literal = { JOINED_ASCII_DIGITS }
+float_literal = { JOINED_DOTTED_SEP_ASCII_DIGITS }
 
 string_lit_char = {
       string_lit_not_escaped_char
@@ -29,39 +79,45 @@ char_lit_char = {
 string_lit_not_escaped_char = {
       !("\"" | "\\") ~ ANY
 }
-
 char_lit_not_escaped_char = {
       !("'" | "\\") ~ ANY
 }
-
 char_lit_escaped_char = {
 	  "\\" ~ ("'" | "\\" | "b" | "n" | "r" | "t")
 }
-
 string_lit_escaped_char = {
 	  "\\" ~ ("\"" | "\\" | "b" | "n" | "r" | "t")
 }
 
-string_literal = ${ str_lit_start_keyword ~ string_lit_char* ~ str_lit_end_keyword }
-char_literal = ${ char_lit_start_keyword ~ char_lit_char ~ char_lit_end_keyword }
-int_literal = { ("+" | "-")? ~ JOINED_ASCII_DIGITS }
-float_literal = { ("+" | "-")? ~ JOINED_DOTTED_SEP_ASCII_DIGITS }
+str_lit_start_keyword = _{ "\"" }
+str_lit_end_keyword = _{ "\"" }
+char_lit_start_keyword = _{ "'" }
+char_lit_end_keyword = _{ "'" }
 
-literal = {
-      string_literal
-    | char_literal
-    | float_literal
-    | int_literal
-}
+num_infix = _{ add | sub | mul | div | mod }
+num_prefix = _{ neg }
+//postfix = _{}
 
-value = {
-	  literal
-}
+neg = { "-" }
+add = { "+" }
+sub = { "-" }
+mul = { "*" }
+div = { "/" }
+mod = { "%" }
 
-expression = {
-	  value
-}
+proc_or = { "|" }
+proc_and = { ";" }
 
-process = {
-	  SOI ~ expression ~ EOI
+WHITESPACE = _{ " " | "\t" | "\n" }
+multiline_comment = _{ "/*" ~ ANY* ~ "*/" }
+COMMENT = _{
+      ("//" ~ (!"\n" ~ ANY)*)
+    | multiline_comment
 }
+non_semantics = _{ WHITESPACE* ~ (COMMENT ~ WHITESPACE*)* }
+at_least_one_non_semantics = _{ (WHITESPACE | COMMENT) ~ non_semantics }
+
+// To avoid whitespaces between digits when parsing
+JOINED_ASCII_DIGITS = @{ ASCII_DIGIT+ }
+JOINED_DOTTED_SEP_ASCII_DIGITS = ${ JOINED_ASCII_DIGITS ~ "." ~ JOINED_ASCII_DIGITS }
+

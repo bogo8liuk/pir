@@ -1,14 +1,14 @@
-use core::num;
-use std::{
-    f32::INFINITY,
-    num::{ParseFloatError, ParseIntError},
-    str::FromStr,
-};
+use std::{num::ParseIntError, str::FromStr};
 
-use pest::{error::Error, iterators::Pairs, Parser, Span};
+use pest::{
+    error::Error,
+    iterators::{Pair, Pairs},
+    pratt_parser::PrattParser,
+    Parser, Span,
+};
 use pest_derive::Parser;
 
-use crate::interpreter::ast;
+use crate::interpreter::ast::{self, IntExpr};
 
 #[derive(Parser)]
 #[grammar = "interpreter/grammar.pest"]
@@ -24,23 +24,38 @@ enum CharParseError {
     MultipleChars { chars: String },
 }
 
+impl CharParseError {}
+
 // A Pair is a pair where one component is the input matched input and the other
 // component is the matched rule.
 
-pub fn parse<'a>(src: &'a str) -> Result<ast::Process, ParserErr> {
-    let parse_result = LangParser::parse(Rule::process, src);
+lazy_static::lazy_static! {
+    static ref NUM_EXPR_PRATT_PARSER: PrattParser<Rule> = {
+        use pest::pratt_parser::{Assoc::*, Op};
+        use Rule::*;
 
+        // Precedence is defined lowest to highest
+        PrattParser::new()
+            // Addition and subtract have equal precedence
+            .op(Op::infix(add, Left) | Op::infix(sub, Left))
+            .op(Op::infix(mul, Left) | Op::infix(div, Left) | Op::infix(r#mod, Left))
+            .op(Op::prefix(neg))
+    };
+}
+
+pub fn parse<'a>(src: &'a str) -> Result<ast::Process, ParserErr> {
+    let parse_result = LangParser::parse(Rule::program, src);
     match parse_result {
-        Ok(mut tokens) => {
-            let pair = tokens.next().expect("Expecting a program");
-            make_process(pair.into_inner())
+        Ok(mut pairs) => {
+            let sub_pairs = pairs.next().expect("Expecting a process").into_inner();
+            make_process(sub_pairs)
         }
-        Result::Err(x) => Result::Err(x),
+        Err(e) => Err(e),
     }
 }
 
 fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
-    let pair = pairs.next().expect("Expecting a process");
+    let pair = pairs.next().expect("Expecting a type of process");
     let rule = pair.as_rule();
 
     match rule {
@@ -49,9 +64,50 @@ fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
             let expr = make_expression(tokens);
             expr.map(|x| ast::Process::Eval(x))
         }
-        _ => {
-            unreachable!("Unexpected syntax error, expression rule should be matched")
+        Rule::r#loop => {
+            let tokens = pair
+                .into_inner()
+                .next()
+                .expect("Expecting a process")
+                .into_inner();
+            let sub_proc = make_process(tokens);
+            sub_proc.map(|p| ast::Process::Loop(Box::new(p)))
         }
+        Rule::channel_declaration => {
+            let tokens = pair.into_inner();
+            let (chan_id, mut updated_tokens) = make_channel_id(tokens);
+            // Skipping process `and` operator
+            updated_tokens
+                .next()
+                .expect("Expecting process sequence operator");
+
+            match make_process(
+                updated_tokens
+                    .next()
+                    .expect("Expecting a process")
+                    .into_inner(),
+            ) {
+                Ok(proc) => Ok(ast::Process::NewChan(chan_id, Box::new(proc))),
+                Err(e) => Err(e),
+            }
+        }
+        _ => {
+            unreachable!(
+                "Unreachable code: expecting a sub-rule of process, found {:?}",
+                rule
+            )
+        }
+    }
+}
+
+// This function gives back ownership of pairs
+fn make_channel_id(mut pairs: Pairs<Rule>) -> (String, Pairs<Rule>) {
+    let pair = pairs.next().expect("Expecting a channel declaration");
+    let rule = pair.as_rule();
+
+    match rule {
+        Rule::var_identifier => (pair.as_str().into(), pairs),
+        _ => unreachable!("Expecting a channel id, found rule {:?}", rule),
     }
 }
 
@@ -65,8 +121,54 @@ fn make_expression(mut pairs: Pairs<Rule>) -> Result<ast::Expression, ParserErr>
             let val = make_value(tokens);
             val.map(|x| ast::Expression::Val(x))
         }
-        _ => unreachable!("Unexpected syntax error, value rule should be matched"),
+        Rule::int_expr => {
+            let sub_pairs = pair.into_inner();
+            make_int_expr(sub_pairs).map(|int_expr| int_expr.into())
+        }
+        r => unreachable!(
+            "Unexpected syntax error, value rule should be matched, rule {:?} found instead",
+            r,
+        ),
     }
+}
+
+fn make_int_expr(pairs: Pairs<Rule>) -> Result<ast::IntExpr, ParserErr> {
+    NUM_EXPR_PRATT_PARSER
+        .map_primary(|pair| match pair.as_rule() {
+            Rule::int_expr => make_int_expr(pair.into_inner()),
+            Rule::int_literal => {
+                let pair_clone = pair.clone();
+                make_raw_i32_literal(pair.into_inner())
+                    .map(IntExpr::Lit)
+                    .map_err(|err| stringable_error_to_parser_error(err, pair_clone))
+            }
+            rule => unreachable!(
+                "Unexpected rule {:?}, expecting one of int expression",
+                rule
+            ),
+        })
+        .map_infix(|lhs, op, rhs| {
+            let op = match op.as_rule() {
+                Rule::add => IntExpr::Add,
+                Rule::sub => IntExpr::Sub,
+                Rule::mul => IntExpr::Mul,
+                Rule::div => IntExpr::Div,
+                Rule::r#mod => IntExpr::Mod,
+                r => unreachable!("Unexpected rule {:?}, expecting an infix operator", r),
+            };
+            match (lhs, rhs) {
+                (Ok(e1), Ok(e2)) => Ok(op(Box::new(e1), Box::new(e2)).into()),
+                _ => todo!("Check if this point can be reached when there are errors"),
+            }
+        })
+        .map_prefix(|op, rhs| match rhs {
+            Ok(int_expr) => match op.as_rule() {
+                Rule::neg => Ok(IntExpr::Neg(Box::new(int_expr)).into()),
+                r => unreachable!("Unreachable code: expecting neg rule, found {:?}", r),
+            },
+            _ => todo!("return reachable error, since we can write anything we want with ops"),
+        })
+        .parse(pairs)
 }
 
 fn make_value(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
@@ -109,28 +211,14 @@ fn make_literal(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
         Rule::int_literal => {
             let lit_res = make_i32_literal(pairs_clone);
             lit_res.map_or_else(
-                |p| {
-                    Err(pest::error::Error::new_from_span(
-                        pest::error::ErrorVariant::CustomError {
-                            message: p.to_string(),
-                        },
-                        pair.as_span(),
-                    ))
-                },
+                |p| Err(stringable_error_to_parser_error(p, pair)),
                 |i| Ok(i),
             )
         }
         Rule::float_literal => {
             let lit_res = make_f32_literal(pairs_clone);
             lit_res.map_or_else(
-                |p| {
-                    Err(pest::error::Error::new_from_span(
-                        pest::error::ErrorVariant::CustomError {
-                            message: p.to_string(),
-                        },
-                        pair.as_span(),
-                    ))
-                },
+                |p| Err(stringable_error_to_parser_error(p, pair)),
                 |fl| Ok(fl),
             )
         }
@@ -152,9 +240,13 @@ fn make_f32_literal(pairs: Pairs<Rule>) -> Result<ast::Value, std::num::ParseFlo
 }
 
 fn make_i32_literal(pairs: Pairs<Rule>) -> Result<ast::Value, ParseIntError> {
+    make_raw_i32_literal(pairs).map(ast::Value::Int32)
+}
+
+fn make_raw_i32_literal(pairs: Pairs<Rule>) -> Result<i32, ParseIntError> {
     let owned = remove_whitespaces(pairs);
     let src = owned.as_str();
-    i32::from_str_radix(src, 10).map(ast::Value::Int32)
+    i32::from_str_radix(src, 10)
 }
 
 fn remove_whitespaces(pairs: Pairs<Rule>) -> String {
@@ -172,10 +264,28 @@ fn make_string_literal(pairs: Pairs<Rule>) -> ast::Value {
 
 fn make_char_literal(pairs: Pairs<Rule>) -> Result<ast::Value, CharParseError> {
     let str = String::from(pairs.as_str());
+    let mut chars = str.chars();
     /* Actually, the check for other characters is useless, because it should
     be already performed by the parser. Thus, that check is not done. */
-    match str.chars().next() {
-        Some(char) => Ok(ast::Value::Char(char)),
+    match chars.next() {
+        // Performing look-ahead after escaping character \
+        Some('\\') => match chars.next() {
+            Some('\\') => Ok(ast::Value::Char('\\'.into())),
+            Some('\'') => Ok(ast::Value::Char('\''.into())),
+            Some('n') => Ok(ast::Value::Char('\n'.into())),
+            Some('t') => Ok(ast::Value::Char('\t'.into())),
+            Some('r') => Ok(ast::Value::Char('\r'.into())),
+            Some('b') => Ok(ast::Value::Char('\x08'.into())),
+            /* This is the character \ followed by none of the above (\, n, t, etc.).
+            It should be already avoided by the grammar. */
+            Some(c) => unreachable!(
+                "Unreachable code: illegal character <{}> after escaping character \\ in character literal",
+                c
+            ),
+            /* This is the following case: '\'. The grammar should avoid it. */
+            None => unreachable!("Unreachable code: no characters after escaping character \\ in character literal"),
+        },
+        Some(char) => Ok(ast::Value::Char(char.into())),
         /* This case should be unreachable, since the parser should perform the
         check before. */
         None => Err(CharParseError::Empty),
@@ -195,12 +305,21 @@ fn escape(str: &str) -> &str {
     }
 }
 
+fn stringable_error_to_parser_error<T>(err: T, pair: Pair<Rule>) -> ParserErr
+where
+    T: ToString,
+{
+    pest::error::Error::new_from_span(
+        pest::error::ErrorVariant::CustomError {
+            message: err.to_string(),
+        },
+        pair.as_span(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use core::panic;
-    use std::str::FromStr;
-
-    use pest::{iterators::Pair, Parser};
+    use std::{f32::INFINITY, str::FromStr};
 
     use super::*;
     use crate::interpreter::ast;
@@ -210,112 +329,112 @@ mod tests {
         assert_eq!(
             parse("'c'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'c',
+                'c' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'0'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '0',
+                '0' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Z'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'Z',
+                'Z' as u32,
             ))))
         );
 
         assert_eq!(
             parse("' '"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                ' ',
+                ' ' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'$'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '$',
+                '$' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Γ'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'Γ',
+                'Γ' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'·'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '·',
+                '·' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'é'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'é',
+                'é' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'ट'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'ट',
+                'ट' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'あ'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'あ',
+                'あ' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'€'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '€',
+                '€' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'漢'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '漢',
+                '漢' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Д'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'Д',
+                'Д' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'\\n'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '\n',
+                '\n' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'\\t'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                '\t',
+                '\t' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Ճ'"),
             Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
-                'Ճ',
+                'Ճ' as u32,
             ))))
         );
     }
@@ -404,58 +523,51 @@ mod tests {
     #[test]
     fn should_parse_i32_lit_correctly() {
         assert_eq!(
-            parse("+234"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
-                234
-            ))))
-        );
-
-        assert_eq!(
             parse("234"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
                 234
             ))))
         );
 
         assert_eq!(
             parse("   234     "),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
                 234
             ))))
         );
 
         assert_eq!(
             parse("0"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
                 0
             ))))
         );
 
         assert_eq!(
             parse("-0"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
-                0
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+                Box::new(IntExpr::Lit(0))
             ))))
         );
 
-        assert_eq!(
+        assert_ne!(
             parse("+0"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
                 0
             ))))
         );
 
         assert_eq!(
             parse("-432"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
-                -432
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+                Box::new(IntExpr::Lit(432))
             ))))
         );
 
         assert_eq!(
             parse("-                 432"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
-                -432
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+                Box::new(IntExpr::Lit(432))
             ))))
         )
     }
@@ -463,6 +575,8 @@ mod tests {
     #[test]
     fn should_not_parse_i32_lit_correctly() {
         assert!(parse("2147483648").is_err());
+
+        assert!(parse("+234").is_err());
 
         assert_ne!(
             parse("42-7"),
@@ -673,5 +787,112 @@ mod tests {
             )))
         );
         assert!(parse("0 .  111").is_err());
+    }
+
+    #[test]
+    fn should_parse_int_expr() {
+        assert_eq!(
+            parse("1+2"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Add(
+                Box::new(IntExpr::Lit(1)),
+                Box::new(IntExpr::Lit(2))
+            ))))
+        );
+
+        assert_eq!(
+            parse("(3-4)"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Sub(
+                Box::new(IntExpr::Lit(3)),
+                Box::new(IntExpr::Lit(4))
+            ))))
+        );
+
+        assert_eq!(
+            parse("  -  10 +    5"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Add(
+                Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(10)))),
+                Box::new(IntExpr::Lit(5))
+            ))))
+        );
+
+        assert_eq!(
+            parse("9  *-32"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Mul(
+                Box::new(IntExpr::Lit(9)),
+                Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(32))))
+            ))))
+        );
+
+        assert_eq!(
+            parse("   4 - 0 - 7"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Sub(
+                Box::new(IntExpr::Sub(
+                    Box::new(IntExpr::Lit(4)),
+                    Box::new(IntExpr::Lit(0))
+                )),
+                Box::new(IntExpr::Lit(7))
+            ))))
+        );
+
+        assert_eq!(parse("   4 - 0 - 7"), parse("(4-0)-7"));
+
+        assert_eq!(
+            parse(" 8 %7   "),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Mod(
+                Box::new(IntExpr::Lit(8)),
+                Box::new(IntExpr::Lit(7))
+            ))))
+        );
+
+        assert_eq!(
+            parse("-88+ 8 %7   "),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Add(
+                Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(88)))),
+                Box::new(IntExpr::Mod(
+                    Box::new(IntExpr::Lit(8)),
+                    Box::new(IntExpr::Lit(7))
+                ))
+            ))))
+        );
+
+        assert_eq!(
+            parse("-88*- 8 %7"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Mod(
+                Box::new(IntExpr::Mul(
+                    Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(88)))),
+                    Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(8)))),
+                )),
+                Box::new(IntExpr::Lit(7))
+            ))))
+        );
+
+        assert_eq!(
+            parse("403 / 89 --1/0"),
+            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Sub(
+                Box::new(IntExpr::Div(
+                    Box::new(IntExpr::Lit(403)),
+                    Box::new(IntExpr::Lit(89)),
+                )),
+                Box::new(IntExpr::Div(
+                    Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(1)))),
+                    Box::new(IntExpr::Lit(0)),
+                )),
+            ))))
+        );
+    }
+
+    #[test]
+    fn should_parse_new_chan() {
+        assert_eq!(
+            parse("chan x; 17"),
+            Ok(ast::Process::NewChan(
+                "x".into(),
+                Box::new(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
+                    17
+                ))))
+            ))
+        );
+
+        assert!(parse("chanx; 0").is_err());
     }
 }

@@ -11,12 +11,15 @@ pub fn eval_and_flush(process: ast::Process) {
 pub fn eval_process(process: ast::Process) -> ToFlush {
     match process {
         ast::Process::Eval(expr) => eval_expr(expr),
+        ast::Process::Loop(_) => todo!(),
+        ast::Process::NewChan(_, _) => todo!(),
     }
 }
 
 fn eval_expr(expr: ast::Expression) -> ToFlush {
     match expr {
         ast::Expression::Val(val) => eval_value(val),
+        ast::Expression::IntExpr(_) => todo!(),
     }
 }
 
