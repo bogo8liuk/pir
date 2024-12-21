@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum Value {
     Char(u32),
     Str(String),
@@ -6,7 +6,7 @@ pub enum Value {
     Float32(f32),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum IntExpr {
     Add(Box<IntExpr>, Box<IntExpr>),
     Sub(Box<IntExpr>, Box<IntExpr>),
@@ -17,7 +17,7 @@ pub enum IntExpr {
     Lit(i32),
 }
 
-#[derive(Debug, PartialOrd)]
+#[derive(Debug, PartialOrd, Clone)]
 pub enum Expression {
     Val(Value),
     IntExpr(IntExpr),
@@ -41,7 +41,7 @@ impl PartialEq for Expression {
 
 impl Eq for Expression {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Process {
     Eval(Expression),
     Loop(Box<Process>),
