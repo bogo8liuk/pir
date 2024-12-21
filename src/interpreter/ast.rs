@@ -45,7 +45,7 @@ impl Eq for Expression {}
 pub enum Process {
     Eval(Expression),
     Loop(Box<Process>),
-    NewChan(String, Box<Process>),
+    ChanDeclaration(String, Box<Process>),
 }
 
 // This is not equivalence notion for processes
@@ -54,7 +54,9 @@ impl PartialEq for Process {
         match (self, other) {
             (Process::Eval(e1), Process::Eval(e2)) => e1 == e2,
             (Process::Loop(p1), Process::Loop(p2)) => p1 == p2,
-            (Process::NewChan(id1, p1), Process::NewChan(id2, p2)) => id1 == id2 && p1 == p2,
+            (Process::ChanDeclaration(id1, p1), Process::ChanDeclaration(id2, p2)) => {
+                id1 == id2 && p1 == p2
+            }
             _ => false,
         }
     }

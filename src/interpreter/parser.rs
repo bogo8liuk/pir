@@ -87,7 +87,7 @@ fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
                     .expect("Expecting a process")
                     .into_inner(),
             ) {
-                Ok(proc) => Ok(ast::Process::NewChan(chan_id, Box::new(proc))),
+                Ok(proc) => Ok(ast::Process::ChanDeclaration(chan_id, Box::new(proc))),
                 Err(e) => Err(e),
             }
         }
@@ -885,7 +885,7 @@ mod tests {
     fn should_parse_new_chan() {
         assert_eq!(
             parse("chan x; 17"),
-            Ok(ast::Process::NewChan(
+            Ok(ast::Process::ChanDeclaration(
                 "x".into(),
                 Box::new(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
                     17

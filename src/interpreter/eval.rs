@@ -1,23 +1,27 @@
-use crate::interpreter::ast::*;
+use crate::interpreter::{ast::*, context::NamesStack};
 
 type ToFlush = String;
 
 pub fn eval_and_flush(process: Process) {
-    let to_flush = eval_process(&process);
+    let mut names_stack = NamesStack::new();
+    let to_flush = eval_process(&process, &mut names_stack);
     let to_flush_str = to_flush.as_str();
     println!("{}", to_flush_str)
 }
 
-pub fn eval_process(process: &Process) -> ToFlush {
+pub fn eval_process(process: &Process, names_stack: &mut NamesStack) -> ToFlush {
     match process {
         Process::Eval(expr) => eval_expr(expr),
         Process::Loop(proc) => {
             loop {
-                eval_process(proc);
+                eval_process(proc, names_stack);
             }
             //"".to_owned()
         }
-        Process::NewChan(_, _) => todo!(),
+        Process::ChanDeclaration(name_id, proc) => {
+            names_stack.push_channel(name_id.to_owned());
+            eval_process(proc, names_stack)
+        }
     }
 }
 
@@ -50,5 +54,29 @@ fn eval_int_expr(expr: &IntExpr) -> i32 {
         IntExpr::Mod(e1, e2) => eval_int_expr(e1) % eval_int_expr(e2),
         IntExpr::Neg(e) => -eval_int_expr(e),
         IntExpr::Lit(i) => *i,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::interpreter::{
+        context::NamesStack,
+        eval::{eval_process, Expression, IntExpr, Process},
+    };
+
+    #[test]
+    fn should_add_name() {
+        let mut names_stack = NamesStack::new();
+        let process = Process::ChanDeclaration(
+            "a_name".to_string(),
+            Box::new(Process::Eval(Expression::IntExpr(IntExpr::Lit(7)))),
+        );
+
+        eval_process(&process, &mut names_stack);
+
+        assert!(
+            names_stack.lookup("a_name".to_owned()).is_some(),
+            "Expected 'a_name' to be in the names stack"
+        );
     }
 }
