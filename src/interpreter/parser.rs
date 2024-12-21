@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use pest::{error::Error, iterators::Pairs, Parser};
+use pest::{error::Error, iterators::Pairs, Parser, Span};
 use pest_derive::Parser;
 
 use crate::interpreter::ast;
@@ -15,6 +15,14 @@ use crate::interpreter::ast;
 struct LangParser;
 
 pub type ParserErr = Error<Rule>;
+
+enum CharParseError {
+    // There are no characters to parse
+    Empty,
+    // Characters are more than one.
+    // NB: it's up to the client to build a string with a size of at least 2.
+    MultipleChars { chars: String },
+}
 
 // A Pair is a pair where one component is the input matched input and the other
 // component is the matched rule.
@@ -84,6 +92,20 @@ fn make_literal(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
             let tokens = pair.into_inner();
             Ok(make_string_literal(tokens))
         }
+        Rule::char_literal => {
+            let pair_clone = pair.clone();
+            let tokens = pair.into_inner();
+            make_char_literal(tokens).map_err(|e| match e {
+                CharParseError::Empty => custom_error_from_span(
+                    String::from("No character to parse"),
+                    pair_clone.as_span(),
+                ),
+                CharParseError::MultipleChars { chars: _ } => custom_error_from_span(
+                    String::from("Characters to parse are more than one"),
+                    pair_clone.as_span(),
+                ),
+            })
+        }
         Rule::int_literal => {
             let lit_res = make_i32_literal(pairs_clone);
             lit_res.map_or_else(
@@ -116,6 +138,13 @@ fn make_literal(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
     }
 }
 
+fn custom_error_from_span(msg: String, span: Span) -> ParserErr {
+    pest::error::Error::new_from_span(
+        pest::error::ErrorVariant::CustomError { message: msg },
+        span,
+    )
+}
+
 fn make_f32_literal(pairs: Pairs<Rule>) -> Result<ast::Value, std::num::ParseFloatError> {
     let owned = remove_whitespaces(pairs);
     let src = owned.as_str();
@@ -141,14 +170,189 @@ fn make_string_literal(pairs: Pairs<Rule>) -> ast::Value {
     ast::Value::Str(str)
 }
 
+fn make_char_literal(pairs: Pairs<Rule>) -> Result<ast::Value, CharParseError> {
+    let str = String::from(pairs.as_str());
+    /* Actually, the check for other characters is useless, because it should
+    be already performed by the parser. Thus, that check is not done. */
+    match str.chars().next() {
+        Some(char) => Ok(ast::Value::Char(char)),
+        /* This case should be unreachable, since the parser should perform the
+        check before. */
+        None => Err(CharParseError::Empty),
+    }
+}
+
+fn escape(str: &str) -> &str {
+    match str {
+        "\\\\" => "\\",
+        "\\\"" => "\"",
+        "\\'" => "'",
+        "\\n" => "\n",
+        "\\t" => "\t",
+        "\\r" => "\r",
+        "\\b" => "\x08",
+        _ => unreachable!("Unexpected escaped character: {}", str),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use core::panic;
     use std::str::FromStr;
 
-    use pest::iterators::Pair;
+    use pest::{iterators::Pair, Parser};
 
     use super::*;
     use crate::interpreter::ast;
+
+    #[test]
+    fn should_parse_char_lit_correctly() {
+        assert_eq!(
+            parse("'c'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'c',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'0'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '0',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'Z'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'Z',
+            ))))
+        );
+
+        assert_eq!(
+            parse("' '"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                ' ',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'$'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '$',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'Γ'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'Γ',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'·'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '·',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'é'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'é',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'ट'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'ट',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'あ'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'あ',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'€'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '€',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'漢'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '漢',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'Д'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'Д',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'\\n'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '\n',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'\\t'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                '\t',
+            ))))
+        );
+
+        assert_eq!(
+            parse("'Ճ'"),
+            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+                'Ճ',
+            ))))
+        );
+    }
+
+    #[test]
+    fn should_not_parse_char_lit_correctly() {
+        assert!(parse("''").is_err());
+
+        // This is expected to be an error because it has an accent
+        assert!(parse("'Д́'").is_err());
+
+        assert!(parse("'W '").is_err());
+
+        assert!(parse("' ~'").is_err());
+
+        assert!(parse("' ¬ '").is_err());
+
+        assert!(parse("'j    '").is_err());
+
+        assert!(parse("'f").is_err());
+
+        assert!(parse("9'").is_err());
+
+        assert!(parse("'c@'").is_err());
+
+        assert!(parse("'42!!!!!!!!!!'").is_err());
+
+        assert!(parse("'lorem ipsum°'").is_err());
+
+        assert!(parse("'字%'").is_err());
+
+        assert!(parse("'").is_err());
+
+        assert!(parse("汉'").is_err());
+
+        assert!(parse("'Ճ").is_err());
+    }
 
     #[test]
     fn should_parse_string_lit_correctly() {

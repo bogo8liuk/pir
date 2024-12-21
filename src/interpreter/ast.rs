@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum Value {
-    Byte(u8),
+    Char(char),
     Str(String),
     Int32(i32),
     Float32(f32),

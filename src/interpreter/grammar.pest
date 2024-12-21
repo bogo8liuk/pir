@@ -14,20 +14,42 @@ COMMENT = _{
 JOINED_ASCII_DIGITS = ${ ASCII_DIGIT+ }
 JOINED_DOTTED_SEP_ASCII_DIGITS = ${ JOINED_ASCII_DIGITS ~ "." ~ JOINED_ASCII_DIGITS }
 
-char = {
-      !("\"" | "\\") ~ ANY
-    | "\\" ~ ("\"" | "\\" | "b" | "f" | "n" | "r" | "t")
+string_lit_char = {
+      string_lit_not_escaped_char
+    | string_lit_escaped_char
     // | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
 }
 
-string_literal = ${ str_lit_start_keyword ~ char* ~ str_lit_end_keyword }
-char_literal = ${ char_lit_start_keyword ~ char ~ char_lit_end_keyword }
+char_lit_char = {
+      char_lit_not_escaped_char
+    | char_lit_escaped_char
+    // | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+string_lit_not_escaped_char = {
+      !("\"" | "\\") ~ ANY
+}
+
+char_lit_not_escaped_char = {
+      !("'" | "\\") ~ ANY
+}
+
+char_lit_escaped_char = {
+	  "\\" ~ ("'" | "\\" | "b" | "n" | "r" | "t")
+}
+
+string_lit_escaped_char = {
+	  "\\" ~ ("\"" | "\\" | "b" | "n" | "r" | "t")
+}
+
+string_literal = ${ str_lit_start_keyword ~ string_lit_char* ~ str_lit_end_keyword }
+char_literal = ${ char_lit_start_keyword ~ char_lit_char ~ char_lit_end_keyword }
 int_literal = { ("+" | "-")? ~ JOINED_ASCII_DIGITS }
 float_literal = { ("+" | "-")? ~ JOINED_DOTTED_SEP_ASCII_DIGITS }
 
 literal = {
       string_literal
-	| char_literal
+    | char_literal
     | float_literal
     | int_literal
 }

@@ -22,8 +22,12 @@ fn eval_expr(expr: ast::Expression) -> ToFlush {
 
 fn eval_value(val: ast::Value) -> ToFlush {
     match val {
-        ast::Value::Str(str) => str,
-        ast::Value::Byte(_) => todo!(),
+        ast::Value::Str(str) => {
+            let wrapper = "\"";
+            let pieces = [wrapper, str.as_str(), wrapper];
+            pieces.concat()
+        }
+        ast::Value::Char(_) => todo!(),
         ast::Value::Int32(num) => num.to_string(),
         ast::Value::Float32(fl) => fl.to_string(),
     }
