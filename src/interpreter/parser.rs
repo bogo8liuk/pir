@@ -948,7 +948,7 @@ mod tests {
     #[test]
     fn should_parse_new_chan() {
         assert_eq!(
-            parse("chan x. 17"),
+            parse("chan x( 17 )"),
             Ok(ast::Process::ChanDeclaration(
                 "x".into(),
                 Box::new(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
@@ -957,10 +957,10 @@ mod tests {
             ))
         );
 
-        assert!(parse("chanx. 0").is_err());
+        assert!(parse("chanx( 0)").is_err());
 
         assert_eq!(
-            parse("  chan  foo  . loop (0)"),
+            parse("  chan  foo  ( loop (0))"),
             Ok(ast::Process::ChanDeclaration(
                 "foo".to_owned(),
                 Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
@@ -974,7 +974,7 @@ mod tests {
     #[test]
     fn should_parse_parallel_op() {
         assert_eq!(
-            parse("loop (17 + 9) | chan x. chan y . loop (1-1)"),
+            parse("loop (17 + 9) | chan x( chan y ( loop (1-1) ))"),
             Ok(ast::Process::Or(
                 Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
                     ast::Expression::IntExpr(ast::IntExpr::Add(

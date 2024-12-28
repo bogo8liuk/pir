@@ -14,8 +14,8 @@ loop = {
 	  loop_keyword ~ loop_start_keyword ~ process ~ loop_end_keyword
 }
 
-loop_start_keyword = _{ "(" }
-loop_end_keyword = _{ ")" }
+loop_start_keyword = _{ enclosing_start_keyword }
+loop_end_keyword = _{ enclosing_end_keyword }
 
 loop_keyword = _{ "loop" }
 
@@ -26,10 +26,14 @@ loop_keyword = _{ "loop" }
 // would be impossible to do with non-atomic rules because the single whitespace
 // or comment must be put at the beginning and not at the end.
 channel_declaration = ${ channel_declaration_keyword ~ at_least_one_non_semantics ~
-	channel_identifier ~ non_semantics ~ proc_then ~ non_semantics ~ process
+	channel_identifier ~ non_semantics ~ channel_scope_start_keyword ~
+	non_semantics ~ process ~ non_semantics ~ channel_scope_end_keyword
 }
 
 channel_declaration_keyword = _{ "chan" }
+
+channel_scope_start_keyword = _{ enclosing_start_keyword }
+channel_scope_end_keyword = _{ enclosing_end_keyword }
 
 var_identifier = { head_var_identifier_char ~ tail_var_identifier_char* }
 channel_identifier = _{ var_identifier }
@@ -47,8 +51,8 @@ int_expr = {
 }
 int_expr_primary = _{ int_literal | expr_start_keyword ~ int_expr ~ expr_end_keyword }
 
-expr_start_keyword = _{ "(" }
-expr_end_keyword = _{ ")" }
+expr_start_keyword = _{ enclosing_start_keyword }
+expr_end_keyword = _{ enclosing_end_keyword }
 
 value = {
 	  literal
@@ -111,6 +115,9 @@ proc_infix = _{ proc_or }
 
 proc_or = { "|" }
 proc_then = _{ "." }
+
+enclosing_start_keyword = _{ "(" }
+enclosing_end_keyword = _{ ")" }
 
 WHITESPACE = _{ " " | "\t" | "\n" }
 multiline_comment = _{ "/*" ~ ANY* ~ "*/" }
