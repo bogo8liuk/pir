@@ -2,7 +2,9 @@ program = _{
 	  SOI ~ process ~ EOI
 }
 
-process = {
+process = !{ process_primary ~ (proc_infix ~ process_primary)* }
+
+process_primary = _{
 	  loop
 	| expression
 	| channel_declaration
@@ -24,7 +26,7 @@ loop_keyword = _{ "loop" }
 // would be impossible to do with non-atomic rules because the single whitespace
 // or comment must be put at the beginning and not at the end.
 channel_declaration = ${ channel_declaration_keyword ~ at_least_one_non_semantics ~
-	channel_identifier ~ non_semantics ~ proc_and ~ non_semantics ~ process
+	channel_identifier ~ non_semantics ~ proc_then ~ non_semantics ~ process
 }
 
 channel_declaration_keyword = _{ "chan" }
@@ -105,8 +107,10 @@ mul = { "*" }
 div = { "/" }
 mod = { "%" }
 
+proc_infix = _{ proc_or }
+
 proc_or = { "|" }
-proc_and = { ";" }
+proc_then = _{ "." }
 
 WHITESPACE = _{ " " | "\t" | "\n" }
 multiline_comment = _{ "/*" ~ ANY* ~ "*/" }

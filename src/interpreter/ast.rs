@@ -46,6 +46,7 @@ pub enum Process {
     Eval(Expression),
     Loop(Box<Process>),
     ChanDeclaration(String, Box<Process>),
+    Or(Box<Process>, Box<Process>),
 }
 
 // This is not equivalence notion for processes
@@ -57,6 +58,7 @@ impl PartialEq for Process {
             (Process::ChanDeclaration(id1, p1), Process::ChanDeclaration(id2, p2)) => {
                 id1 == id2 && p1 == p2
             }
+            (Process::Or(pa1, pa2), Process::Or(pb1, pb2)) => pa1 == pb1 && pa2 == pb2,
             _ => false,
         }
     }

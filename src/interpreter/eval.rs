@@ -22,6 +22,9 @@ pub fn eval_process(process: &Process, names_stack: &mut NamesStack) -> ToFlush 
             names_stack.push_channel(name_id.to_owned());
             eval_process(proc, names_stack)
         }
+        Process::Or(_, _) => {
+            todo!("TODO")
+        }
     }
 }
 

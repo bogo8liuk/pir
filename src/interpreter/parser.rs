@@ -8,7 +8,7 @@ use pest::{
 };
 use pest_derive::Parser;
 
-use crate::interpreter::ast::{self, IntExpr};
+use crate::interpreter::ast::{self, IntExpr, Process};
 
 #[derive(Parser)]
 #[grammar = "interpreter/grammar.pest"]
@@ -41,6 +41,15 @@ lazy_static::lazy_static! {
             .op(Op::infix(mul, Left) | Op::infix(div, Left) | Op::infix(r#mod, Left))
             .op(Op::prefix(neg))
     };
+
+    static ref PROC_PRATT_PARSER: PrattParser<Rule> = {
+        use pest::pratt_parser::{Assoc::*, Op};
+        use Rule::*;
+
+        // Precedence is defined lowest to highest
+        PrattParser::new()
+            .op(Op::infix(proc_or, Right))
+    };
 }
 
 pub fn parse<'a>(src: &'a str) -> Result<ast::Process, ParserErr> {
@@ -54,6 +63,60 @@ pub fn parse<'a>(src: &'a str) -> Result<ast::Process, ParserErr> {
     }
 }
 
+fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, Error<Rule>> {
+    PROC_PRATT_PARSER
+        .map_primary(|pair| {
+            match pair.as_rule() {
+                Rule::expression => {
+                    let tokens = pair.into_inner();
+                    let expr = make_expression(tokens);
+                    expr.map(|x| ast::Process::Eval(x))
+                }
+                Rule::r#loop => {
+                    let tokens = pair
+                        .into_inner()
+                        .next()
+                        .expect("Expecting a process")
+                        .into_inner();
+                    let sub_proc = make_process(tokens);
+                    sub_proc.map(|p| ast::Process::Loop(Box::new(p)))
+                }
+                Rule::channel_declaration => {
+                    let tokens = pair.into_inner();
+                    let (chan_id, mut updated_tokens) = make_channel_id(tokens);
+                    // Skipping process `then` operator
+                    //updated_tokens
+                    //    .next()
+                    //    .expect("Expecting process sequence operator");
+
+                    match make_process(
+                        updated_tokens
+                            .next()
+                            .expect("Expecting a process")
+                            .into_inner(),
+                    ) {
+                        Ok(proc) => Ok(ast::Process::ChanDeclaration(chan_id, Box::new(proc))),
+                        Err(e) => Err(e),
+                    }
+                }
+                rule => unreachable!("Unexpected rule {:?}, expecting one of process", rule),
+            }
+        })
+        .map_infix(|lhs, op, rhs| {
+            let op = match op.as_rule() {
+                Rule::proc_or => Process::Or,
+                rule => unreachable!("Expecting a process operator, found {:?}", rule),
+            };
+
+            match (lhs, rhs) {
+                (Ok(proc1), Ok(proc2)) => Ok(op(Box::new(proc1), Box::new(proc2))),
+                _ => todo!("Is this reachable?"),
+            }
+        })
+        .parse(pairs)
+}
+
+/*
 fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
     let pair = pairs.next().expect("Expecting a type of process");
     let rule = pair.as_rule();
@@ -99,6 +162,7 @@ fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
         }
     }
 }
+*/
 
 // This function gives back ownership of pairs
 fn make_channel_id(mut pairs: Pairs<Rule>) -> (String, Pairs<Rule>) {
@@ -884,7 +948,7 @@ mod tests {
     #[test]
     fn should_parse_new_chan() {
         assert_eq!(
-            parse("chan x; 17"),
+            parse("chan x. 17"),
             Ok(ast::Process::ChanDeclaration(
                 "x".into(),
                 Box::new(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
@@ -893,6 +957,44 @@ mod tests {
             ))
         );
 
-        assert!(parse("chanx; 0").is_err());
+        assert!(parse("chanx. 0").is_err());
+
+        assert_eq!(
+            parse("  chan  foo  . loop (0)"),
+            Ok(ast::Process::ChanDeclaration(
+                "foo".to_owned(),
+                Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
+                    ast::Expression::IntExpr(ast::IntExpr::Lit(0))
+                ))))
+            ))
+        )
+        //TODO: do tests on ids
+    }
+
+    #[test]
+    fn should_parse_parallel_op() {
+        assert_eq!(
+            parse("loop (17 + 9) | chan x. chan y . loop (1-1)"),
+            Ok(ast::Process::Or(
+                Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
+                    ast::Expression::IntExpr(ast::IntExpr::Add(
+                        Box::new(ast::IntExpr::Lit(17)),
+                        Box::new(ast::IntExpr::Lit(9))
+                    ))
+                )))),
+                Box::new(ast::Process::ChanDeclaration(
+                    "x".to_owned(),
+                    Box::new(ast::Process::ChanDeclaration(
+                        "y".to_owned(),
+                        Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
+                            ast::Expression::IntExpr(ast::IntExpr::Sub(
+                                Box::new(ast::IntExpr::Lit(1)),
+                                Box::new(ast::IntExpr::Lit(1))
+                            ))
+                        ))))
+                    ))
+                ))
+            ))
+        );
     }
 }
