@@ -1041,6 +1041,8 @@ mod tests {
         assert!(parse("chan X_0 (7)").is_err());
         assert!(parse("chan chan (7)").is_err());
         assert!(parse("chan loop (7)").is_err());
+        assert!(parse("chan chan c (7)").is_err());
+        assert!(parse("chan loop l (7)").is_err());
         assert!(parse("chan . (7)").is_err());
         assert!(parse("chan ._ (7)").is_err());
         assert!(parse("chan , (7)").is_err());
@@ -1100,5 +1102,31 @@ mod tests {
                 ))
             ))
         );
+
+        assert_eq!(
+            parse("loop (7 | chan x (0))"),
+            Ok(Process::Loop(Box::new(Process::Or(
+                Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(7)))),
+                Box::new(Process::ChanDeclaration(
+                    "x".to_owned(),
+                    Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(0))))
+                ))
+            ))))
+        );
+
+        assert_eq!(
+            parse("-6|/**/9"),
+            Ok(Process::Or(
+                Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+                    Box::new(IntExpr::Lit(6))
+                )))),
+                Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(9))))
+            ))
+        );
+
+        assert!(parse("  | 9").is_err());
+        assert!(parse("999 - 0 |").is_err());
+        assert!(parse("999 +| 7").is_err());
+        assert!(parse("chan dd (8|) ").is_err());
     }
 }
