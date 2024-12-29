@@ -1,3 +1,10 @@
+// If you add new keywords (excluding embracers like parenthesys and stuff like
+// them), please make sure to update this list
+reserved_keyword = _{
+	  loop_keyword
+	| channel_declaration_keyword
+}
+
 program = _{
 	  SOI ~ process ~ EOI
 }
@@ -35,7 +42,8 @@ channel_declaration_keyword = _{ "chan" }
 channel_scope_start_keyword = _{ enclosing_start_keyword }
 channel_scope_end_keyword = _{ enclosing_end_keyword }
 
-var_identifier = { head_var_identifier_char ~ tail_var_identifier_char* }
+isolated_keyword = _{ reserved_keyword ~ at_least_one_non_semantics }
+var_identifier = ${ !isolated_keyword ~ (head_var_identifier_char ~ tail_var_identifier_char*) }
 channel_identifier = _{ var_identifier }
 
 head_var_identifier_char = _{ ASCII_ALPHA_LOWER | "_" }
@@ -120,7 +128,7 @@ enclosing_start_keyword = _{ "(" }
 enclosing_end_keyword = _{ ")" }
 
 WHITESPACE = _{ " " | "\t" | "\n" }
-multiline_comment = _{ "/*" ~ ANY* ~ "*/" }
+multiline_comment = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 COMMENT = _{
       ("//" ~ (!"\n" ~ ANY)*)
     | multiline_comment
