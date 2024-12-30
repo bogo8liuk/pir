@@ -1,30 +1,130 @@
+use std::{
+    borrow::{Borrow, BorrowMut},
+    future::Future,
+    process::Output,
+    sync::Arc,
+};
+
+use tokio::{spawn, sync::oneshot, task::JoinHandle};
+
 use crate::interpreter::{ast::*, context::NamesStack};
 
 type ToFlush = String;
 
-pub fn eval_and_flush(process: Process) {
-    let mut names_stack = NamesStack::new();
-    let to_flush = eval_process(&process, &mut names_stack);
+pub async fn eval_and_flush(process: Process) {
+    //let names_stack = NamesStack::new();
+    let names_stack_handle = StackHandle::new();
+    let to_flush = eval_process(Box::new(process), names_stack_handle).await;
     let to_flush_str = to_flush.as_str();
     println!("{}", to_flush_str)
 }
 
-pub fn eval_process(process: &Process, names_stack: &mut NamesStack) -> ToFlush {
-    match process {
-        Process::Eval(expr) => eval_expr(expr),
+pub async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) -> ToFlush {
+    match *process {
+        Process::Eval(expr) => {
+            let s = eval_expr(&expr);
+            println!("{}", s);
+            s
+        }
         Process::Loop(proc) => {
             loop {
-                eval_process(proc, names_stack);
+                // This is actually sub-optimal due to cloning
+                let ref_proc = proc.clone();
+                let handle_clone = names_stack_handle.clone();
+                Box::pin(eval_process(ref_proc, handle_clone)).await;
             }
             //"".to_owned()
         }
         Process::ChanDeclaration(name_id, proc) => {
-            names_stack.push_channel(name_id.to_owned());
-            eval_process(proc, names_stack)
+            names_stack_handle.push_channel(name_id.to_owned()).await;
+            //let ref_proc = Arc::new(**proc);
+            Box::pin(eval_process(proc, names_stack_handle)).await
         }
-        Process::Or(_, _) => {
-            todo!("TODO")
+        Process::Or(proc1, proc2) => {
+            // This is necessary due to rustc typecheck. The clean way would be
+            // pass the future returned by `eval_process` directly to spawn
+            // function
+            fn eval_wrap(
+                process: Box<Process>,
+                names_stack_handle: StackHandle,
+            ) -> JoinHandle<ToFlush> {
+                tokio::spawn(eval_process(process, names_stack_handle))
+            }
+            let handle_clone = names_stack_handle.clone();
+            let join1 = eval_wrap(proc1, names_stack_handle);
+            let join2 = eval_wrap(proc2, handle_clone);
+
+            join1.await;
+            join2.await;
+            "".to_owned()
         }
+    }
+}
+
+struct StackActor {
+    receiver: tokio::sync::mpsc::Receiver<StackMessage>,
+    names_stack: NamesStack,
+}
+
+#[derive(Clone)]
+struct StackHandle {
+    sender: tokio::sync::mpsc::Sender<StackMessage>,
+}
+
+struct StackMessage {
+    payload: StackMessagePayload,
+    respond_to: oneshot::Sender<()>,
+}
+
+enum StackMessagePayload {
+    PushChannel(String),
+}
+
+impl StackActor {
+    //fn new(receiver: tokio::sync::mpsc::Receiver<StackMessage>, names_stack: &NamesStack) {
+    //    StackActor {
+    //
+    //    }
+    //}
+
+    fn handle_message(&mut self, msg: StackMessage) {
+        match msg.payload {
+            StackMessagePayload::PushChannel(id) => {
+                self.names_stack.push_channel(id);
+                let _ = msg.respond_to.send(());
+            }
+        }
+    }
+}
+
+async fn run_stack_actor(mut actor: StackActor) {
+    while let Some(msg) = actor.receiver.recv().await {
+        actor.handle_message(msg)
+    }
+}
+
+impl StackHandle {
+    fn new() -> Self {
+        let (sender, receiver) = tokio::sync::mpsc::channel(500);
+        let actor = StackActor {
+            receiver,
+            names_stack: NamesStack::new(),
+        };
+
+        tokio::spawn(run_stack_actor(actor));
+
+        Self { sender }
+    }
+
+    async fn push_channel(&self, id: String) {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::PushChannel(id),
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
     }
 }
 
@@ -67,19 +167,19 @@ mod tests {
         eval::{eval_process, Expression, IntExpr, Process},
     };
 
-    #[test]
-    fn should_add_name() {
-        let mut names_stack = NamesStack::new();
-        let process = Process::ChanDeclaration(
-            "a_name".to_string(),
-            Box::new(Process::Eval(Expression::IntExpr(IntExpr::Lit(7)))),
-        );
+    //#[test]
+    //fn should_add_name() {
+    //    let mut names_stack = NamesStack::new();
+    //    let process = Process::ChanDeclaration(
+    //        "a_name".to_string(),
+    //        Box::new(Process::Eval(Expression::IntExpr(IntExpr::Lit(7)))),
+    //    );
 
-        eval_process(&process, &mut names_stack);
+    //    eval_process(&process, &mut names_stack);
 
-        assert!(
-            names_stack.lookup("a_name".to_owned()).is_some(),
-            "Expected 'a_name' to be in the names stack"
-        );
-    }
+    //    assert!(
+    //        names_stack.lookup("a_name".to_owned()).is_some(),
+    //        "Expected 'a_name' to be in the names stack"
+    //    );
+    //}
 }

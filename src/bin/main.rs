@@ -1,5 +1,6 @@
 use pir::interpreter_exe;
 
-fn main() {
-    interpreter_exe()
+#[tokio::main]
+async fn main() {
+    interpreter_exe().await
 }
