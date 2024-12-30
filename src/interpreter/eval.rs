@@ -50,9 +50,10 @@ async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) ->
             let join1 = eval_wrap(proc1, names_stack_handle);
             let join2 = eval_wrap(proc2, handle_clone);
 
-            join1.await;
-            join2.await;
-            "".to_owned()
+            let res1 = join1.await.unwrap();
+            let res2 = join2.await.unwrap();
+
+            ["<", res1.as_str(), ",", res2.as_str(), ">"].concat()
         }
     }
 }
