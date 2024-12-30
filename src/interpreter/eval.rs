@@ -55,6 +55,8 @@ async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) ->
 
             ["<", res1.as_str(), ",", res2.as_str(), ">"].concat()
         }
+        Process::Send(_, _, _) => todo!(),
+        Process::Receive(_, _, _) => todo!(),
     }
 }
 
