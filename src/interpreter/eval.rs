@@ -23,7 +23,7 @@ like Arc + RwLock _et similia_, sources of ownership and lifetime issues,
 especially with async recursion. */
 async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) -> ToFlush {
     match *process {
-        Process::Eval(expr) => eval_expr(&expr),
+        Process::Expr(expr) => eval_expr(&expr),
         Process::Loop(proc) => {
             loop {
                 let handle_clone = names_stack_handle.clone();
@@ -36,7 +36,7 @@ async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) ->
             names_stack_handle.push_channel(name_id.to_owned()).await;
             Box::pin(eval_process(proc, names_stack_handle)).await
         }
-        Process::Or(proc1, proc2) => {
+        Process::Par(proc1, proc2) => {
             // This is necessary due to rustc typecheck. The clean way would be
             // pass the future returned by `eval_process` directly to spawn
             // function
@@ -165,7 +165,7 @@ mod tests {
     //    let mut names_stack = NamesStack::new();
     //    let process = Process::ChanDeclaration(
     //        "a_name".to_string(),
-    //        Box::new(Process::Eval(Expression::IntExpr(IntExpr::Lit(7)))),
+    //        Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
     //    );
 
     //    eval_process(&process, &mut names_stack);

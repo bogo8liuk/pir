@@ -43,10 +43,10 @@ impl Eq for Expression {}
 
 #[derive(Debug, Clone)]
 pub enum Process {
-    Eval(Expression),
+    Expr(Expression),
     Loop(Box<Process>),
     ChanDeclaration(String, Box<Process>),
-    Or(Box<Process>, Box<Process>),
+    Par(Box<Process>, Box<Process>),
     Send(Expression, String, Box<Process>),
     Receive(String, String, Box<Process>),
 }
@@ -55,12 +55,12 @@ pub enum Process {
 impl PartialEq for Process {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Process::Eval(e1), Process::Eval(e2)) => e1 == e2,
+            (Process::Expr(e1), Process::Expr(e2)) => e1 == e2,
             (Process::Loop(p1), Process::Loop(p2)) => p1 == p2,
             (Process::ChanDeclaration(id1, p1), Process::ChanDeclaration(id2, p2)) => {
                 id1 == id2 && p1 == p2
             }
-            (Process::Or(pa1, pa2), Process::Or(pb1, pb2)) => pa1 == pb1 && pa2 == pb2,
+            (Process::Par(pa1, pa2), Process::Par(pb1, pb2)) => pa1 == pb1 && pa2 == pb2,
             (Process::Send(expr1, chan_id1, p1), Process::Send(expr2, chan_id2, p2)) => {
                 expr1 == expr2 && chan_id1 == chan_id2 && p1 == p2
             }
@@ -74,12 +74,12 @@ impl PartialEq for Process {
 
 impl From<Expression> for Process {
     fn from(value: Expression) -> Self {
-        Process::Eval(value)
+        Process::Expr(value)
     }
 }
 
 impl From<IntExpr> for Process {
     fn from(value: IntExpr) -> Self {
-        Process::Eval(Expression::IntExpr(value))
+        Process::Expr(Expression::IntExpr(value))
     }
 }

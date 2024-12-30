@@ -70,7 +70,7 @@ fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, Error<Rule>> {
                 Rule::expression => {
                     let tokens = pair.into_inner();
                     let expr = make_expression(tokens);
-                    expr.map(|x| ast::Process::Eval(x))
+                    expr.map(|x| ast::Process::Expr(x))
                 }
                 Rule::r#loop => {
                     let tokens = pair
@@ -104,7 +104,7 @@ fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, Error<Rule>> {
         })
         .map_infix(|lhs, op, rhs| {
             let op = match op.as_rule() {
-                Rule::proc_or => Process::Or,
+                Rule::proc_or => Process::Par,
                 rule => unreachable!("Expecting a process operator, found {:?}", rule),
             };
 
@@ -125,7 +125,7 @@ fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
         Rule::expression => {
             let tokens = pair.into_inner();
             let expr = make_expression(tokens);
-            expr.map(|x| ast::Process::Eval(x))
+            expr.map(|x| ast::Process::Expr(x))
         }
         Rule::r#loop => {
             let tokens = pair
@@ -392,112 +392,112 @@ mod tests {
     fn should_parse_char_lit_correctly() {
         assert_eq!(
             parse("'c'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'c' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'0'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '0' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Z'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'Z' as u32,
             ))))
         );
 
         assert_eq!(
             parse("' '"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 ' ' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'$'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '$' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Γ'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'Γ' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'·'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '·' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'é'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'é' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'ट'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'ट' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'あ'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'あ' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'€'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '€' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'漢'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '漢' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Д'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'Д' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'\\n'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '\n' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'\\t'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 '\t' as u32,
             ))))
         );
 
         assert_eq!(
             parse("'Ճ'"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Char(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
                 'Ճ' as u32,
             ))))
         );
@@ -541,35 +541,35 @@ mod tests {
     fn should_parse_string_lit_correctly() {
         assert_eq!(
             parse("\"\""),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Str(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Str(
                 String::from_str("").expect("Testing expect"),
             ))))
         );
 
         assert_eq!(
             parse("\"hello world!\""),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Str(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Str(
                 String::from_str("hello world!").expect("Testing expect"),
             ))))
         );
 
         assert_eq!(
             parse("     \"hello world!\"   "),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Str(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Str(
                 String::from_str("hello world!").expect("Testing expect"),
             ))))
         );
 
         assert_eq!(
             parse("\"À\""),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Str(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Str(
                 String::from_str("À").expect("Testing expect"),
             ))))
         );
 
         assert_eq!(
             parse("\"\\n\""),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Str(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Str(
                 String::from_str("\\n").expect("Testing expect"),
             ))))
         );
@@ -588,49 +588,49 @@ mod tests {
     fn should_parse_i32_lit_correctly() {
         assert_eq!(
             parse("234"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(
                 234
             ))))
         );
 
         assert_eq!(
             parse("   234     "),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(
                 234
             ))))
         );
 
         assert_eq!(
             parse("0"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(
                 0
             ))))
         );
 
         assert_eq!(
             parse("-0"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Neg(
                 Box::new(IntExpr::Lit(0))
             ))))
         );
 
         assert_ne!(
             parse("+0"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(
                 0
             ))))
         );
 
         assert_eq!(
             parse("-432"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Neg(
                 Box::new(IntExpr::Lit(432))
             ))))
         );
 
         assert_eq!(
             parse("-                 432"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Neg(
                 Box::new(IntExpr::Lit(432))
             ))))
         )
@@ -644,21 +644,21 @@ mod tests {
 
         assert_ne!(
             parse("42-7"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Int32(
                 42
             ))))
         );
 
         assert_ne!(
             parse("42-7"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Int32(
                 -7
             ))))
         );
 
         assert_ne!(
             parse("42-7"),
-            Ok(ast::Process::Eval(ast::Expression::Val(ast::Value::Int32(
+            Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Int32(
                 7
             ))))
         );
@@ -670,56 +670,56 @@ mod tests {
     fn should_parse_float_literal_correctly() {
         assert_eq!(
             parse("123.456"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(123.456)
             )))
         );
 
         assert_eq!(
             parse("   78.038           "),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(78.038)
             )))
         );
 
         assert_eq!(
             parse("0.450099"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(0.450099)
             )))
         );
 
         assert_eq!(
             parse("-0.4"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-0.4)
             )))
         );
 
         assert_eq!(
             parse("   -     7.05   "),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-7.05)
             )))
         );
 
         assert_eq!(
             parse("-2005.0002301"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-2005.0002301)
             )))
         );
 
         assert_eq!(
             parse("02.7"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(2.7),
             )))
         );
 
         assert_ne!(
             parse("0.0001"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-2005.0002301)
             )))
         );
@@ -730,7 +730,7 @@ mod tests {
         );
         assert_eq!(
             parse("9324920392048932084210489058709438490850932490932850.2112"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(INFINITY)
             )))
         );
@@ -776,7 +776,7 @@ mod tests {
         // old ones remain right!
         assert_ne!(
             parse("7..4"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(7.4)
             )))
         );
@@ -784,7 +784,7 @@ mod tests {
 
         assert_ne!(
             parse("(-8).2"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-8.2)
             )))
         );
@@ -792,7 +792,7 @@ mod tests {
 
         assert_ne!(
             parse("7   .948"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(7.948)
             )))
         );
@@ -800,7 +800,7 @@ mod tests {
 
         assert_ne!(
             parse("-8   .606"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-8.606)
             )))
         );
@@ -808,7 +808,7 @@ mod tests {
 
         assert_ne!(
             parse("-1776   .  6906"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(-1776.6906)
             )))
         );
@@ -816,13 +816,13 @@ mod tests {
 
         assert_ne!(
             parse("6.8.7"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(68.7)
             )))
         );
         assert_ne!(
             parse("6.8.7"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(6.87)
             )))
         );
@@ -830,7 +830,7 @@ mod tests {
 
         assert_ne!(
             parse("5.  1"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(5.1)
             )))
         );
@@ -838,7 +838,7 @@ mod tests {
 
         assert_ne!(
             parse("5 .01"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(5.01)
             )))
         );
@@ -846,7 +846,7 @@ mod tests {
 
         assert_ne!(
             parse("0 .  111"),
-            Ok(ast::Process::Eval(ast::Expression::Val(
+            Ok(ast::Process::Expr(ast::Expression::Val(
                 ast::Value::Float32(0.111)
             )))
         );
@@ -857,7 +857,7 @@ mod tests {
     fn should_parse_int_expr() {
         assert_eq!(
             parse("1+2"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Add(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Add(
                 Box::new(IntExpr::Lit(1)),
                 Box::new(IntExpr::Lit(2))
             ))))
@@ -865,7 +865,7 @@ mod tests {
 
         assert_eq!(
             parse("(3-4)"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Sub(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Sub(
                 Box::new(IntExpr::Lit(3)),
                 Box::new(IntExpr::Lit(4))
             ))))
@@ -873,7 +873,7 @@ mod tests {
 
         assert_eq!(
             parse("  -  10 +    5"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Add(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Add(
                 Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(10)))),
                 Box::new(IntExpr::Lit(5))
             ))))
@@ -881,7 +881,7 @@ mod tests {
 
         assert_eq!(
             parse("9  *-32"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Mul(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Mul(
                 Box::new(IntExpr::Lit(9)),
                 Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(32))))
             ))))
@@ -889,7 +889,7 @@ mod tests {
 
         assert_eq!(
             parse("   4 - 0 - 7"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Sub(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Sub(
                 Box::new(IntExpr::Sub(
                     Box::new(IntExpr::Lit(4)),
                     Box::new(IntExpr::Lit(0))
@@ -902,7 +902,7 @@ mod tests {
 
         assert_eq!(
             parse(" 8 %7   "),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Mod(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Mod(
                 Box::new(IntExpr::Lit(8)),
                 Box::new(IntExpr::Lit(7))
             ))))
@@ -910,7 +910,7 @@ mod tests {
 
         assert_eq!(
             parse("-88+ 8 %7   "),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Add(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Add(
                 Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(88)))),
                 Box::new(IntExpr::Mod(
                     Box::new(IntExpr::Lit(8)),
@@ -921,7 +921,7 @@ mod tests {
 
         assert_eq!(
             parse("-88*- 8 %7"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Mod(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Mod(
                 Box::new(IntExpr::Mul(
                     Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(88)))),
                     Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(8)))),
@@ -932,7 +932,7 @@ mod tests {
 
         assert_eq!(
             parse("403 / 89 --1/0"),
-            Ok(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Sub(
+            Ok(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Sub(
                 Box::new(IntExpr::Div(
                     Box::new(IntExpr::Lit(403)),
                     Box::new(IntExpr::Lit(89)),
@@ -951,7 +951,7 @@ mod tests {
             parse("chan x( 17 )"),
             Ok(ast::Process::ChanDeclaration(
                 "x".into(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(
                     17
                 ))))
             ))
@@ -963,7 +963,7 @@ mod tests {
             parse("  chan  foo  ( loop (0))"),
             Ok(ast::Process::ChanDeclaration(
                 "foo".to_owned(),
-                Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
+                Box::new(ast::Process::Loop(Box::new(ast::Process::Expr(
                     ast::Expression::IntExpr(ast::IntExpr::Lit(0))
                 ))))
             ))
@@ -978,7 +978,7 @@ mod tests {
             parse("chan _ (9)"),
             Ok(ast::Process::ChanDeclaration(
                 "_".to_owned(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(
                     ast::IntExpr::Lit(9)
                 )))
             ))
@@ -988,7 +988,7 @@ mod tests {
             parse("chan _F (-42)"),
             Ok(ast::Process::ChanDeclaration(
                 "_F".to_owned(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(
                     ast::IntExpr::Neg(Box::new(IntExpr::Lit(42)))
                 )))
             ))
@@ -998,7 +998,7 @@ mod tests {
             parse("chan b3 (-42)"),
             Ok(ast::Process::ChanDeclaration(
                 "b3".to_owned(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(
                     ast::IntExpr::Neg(Box::new(IntExpr::Lit(42)))
                 )))
             ))
@@ -1008,7 +1008,7 @@ mod tests {
             parse("chan b3/* commenting */(-42)"),
             Ok(ast::Process::ChanDeclaration(
                 "b3".to_owned(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(
                     ast::IntExpr::Neg(Box::new(IntExpr::Lit(42)))
                 )))
             ))
@@ -1018,7 +1018,7 @@ mod tests {
             parse("chan chanx (-42)"),
             Ok(ast::Process::ChanDeclaration(
                 "chanx".to_owned(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(
                     ast::IntExpr::Neg(Box::new(IntExpr::Lit(42)))
                 )))
             ))
@@ -1028,7 +1028,7 @@ mod tests {
             parse("chan looppy (-42)"),
             Ok(ast::Process::ChanDeclaration(
                 "looppy".to_owned(),
-                Box::new(ast::Process::Eval(ast::Expression::IntExpr(
+                Box::new(ast::Process::Expr(ast::Expression::IntExpr(
                     ast::IntExpr::Neg(Box::new(IntExpr::Lit(42)))
                 )))
             ))
@@ -1081,8 +1081,8 @@ mod tests {
     fn should_parse_parallel_op() {
         assert_eq!(
             parse("loop (17 + 9) | chan x( chan y ( loop (1-1) ))"),
-            Ok(ast::Process::Or(
-                Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
+            Ok(ast::Process::Par(
+                Box::new(ast::Process::Loop(Box::new(ast::Process::Expr(
                     ast::Expression::IntExpr(ast::IntExpr::Add(
                         Box::new(ast::IntExpr::Lit(17)),
                         Box::new(ast::IntExpr::Lit(9))
@@ -1092,7 +1092,7 @@ mod tests {
                     "x".to_owned(),
                     Box::new(ast::Process::ChanDeclaration(
                         "y".to_owned(),
-                        Box::new(ast::Process::Loop(Box::new(ast::Process::Eval(
+                        Box::new(ast::Process::Loop(Box::new(ast::Process::Expr(
                             ast::Expression::IntExpr(ast::IntExpr::Sub(
                                 Box::new(ast::IntExpr::Lit(1)),
                                 Box::new(ast::IntExpr::Lit(1))
@@ -1105,22 +1105,22 @@ mod tests {
 
         assert_eq!(
             parse("loop (7 | chan x (0))"),
-            Ok(Process::Loop(Box::new(Process::Or(
-                Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(7)))),
+            Ok(Process::Loop(Box::new(Process::Par(
+                Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7)))),
                 Box::new(Process::ChanDeclaration(
                     "x".to_owned(),
-                    Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(0))))
+                    Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(0))))
                 ))
             ))))
         );
 
         assert_eq!(
             parse("-6|/**/9"),
-            Ok(Process::Or(
-                Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Neg(
+            Ok(Process::Par(
+                Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Neg(
                     Box::new(IntExpr::Lit(6))
                 )))),
-                Box::new(Process::Eval(ast::Expression::IntExpr(IntExpr::Lit(9))))
+                Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(9))))
             ))
         );
 
