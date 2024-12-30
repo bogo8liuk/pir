@@ -1,11 +1,7 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    future::Future,
-    process::Output,
-    sync::Arc,
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
 };
-
-use tokio::{spawn, sync::oneshot, task::JoinHandle};
 
 use crate::interpreter::{ast::*, context::NamesStack};
 
@@ -19,25 +15,25 @@ pub async fn eval_and_flush(process: Process) {
     println!("{}", to_flush_str)
 }
 
-pub async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) -> ToFlush {
+/* The runtime context is handled with the actor pattern. No shared data, just
+a task whose single goal is to handle requests to access the context (like the
+stack). Requests (and responses) are implemented through message passing. This
+could be sub-optimal (???), but it avoids the headaches that could cause things
+like Arc + RwLock _et similia_, sources of ownership and lifetime issues,
+especially with async recursion. */
+async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle) -> ToFlush {
     match *process {
-        Process::Eval(expr) => {
-            let s = eval_expr(&expr);
-            println!("{}", s);
-            s
-        }
+        Process::Eval(expr) => eval_expr(&expr),
         Process::Loop(proc) => {
             loop {
-                // This is actually sub-optimal due to cloning
-                let ref_proc = proc.clone();
                 let handle_clone = names_stack_handle.clone();
-                Box::pin(eval_process(ref_proc, handle_clone)).await;
+                // Ast cloning is probably actually sub-optimal
+                Box::pin(eval_process(proc.clone(), handle_clone)).await;
             }
             //"".to_owned()
         }
         Process::ChanDeclaration(name_id, proc) => {
             names_stack_handle.push_channel(name_id.to_owned()).await;
-            //let ref_proc = Arc::new(**proc);
             Box::pin(eval_process(proc, names_stack_handle)).await
         }
         Process::Or(proc1, proc2) => {
@@ -62,13 +58,13 @@ pub async fn eval_process(process: Box<Process>, names_stack_handle: StackHandle
 }
 
 struct StackActor {
-    receiver: tokio::sync::mpsc::Receiver<StackMessage>,
+    receiver: mpsc::Receiver<StackMessage>,
     names_stack: NamesStack,
 }
 
 #[derive(Clone)]
 struct StackHandle {
-    sender: tokio::sync::mpsc::Sender<StackMessage>,
+    sender: mpsc::Sender<StackMessage>,
 }
 
 struct StackMessage {
@@ -81,12 +77,6 @@ enum StackMessagePayload {
 }
 
 impl StackActor {
-    //fn new(receiver: tokio::sync::mpsc::Receiver<StackMessage>, names_stack: &NamesStack) {
-    //    StackActor {
-    //
-    //    }
-    //}
-
     fn handle_message(&mut self, msg: StackMessage) {
         match msg.payload {
             StackMessagePayload::PushChannel(id) => {

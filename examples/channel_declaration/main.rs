@@ -1,6 +1,7 @@
 use pir::interpreter::execute;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let path = String::from("examples/channel_declaration/channel_declaration.pir");
-    execute(&path)
+    execute(&path).await
 }
