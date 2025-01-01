@@ -948,7 +948,7 @@ mod tests {
     #[test]
     fn should_parse_new_chan() {
         assert_eq!(
-            parse("chan x( 17 )"),
+            parse("chan x. 17 "),
             Ok(ast::Process::ChanDeclaration(
                 "x".into(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(
@@ -957,10 +957,10 @@ mod tests {
             ))
         );
 
-        assert!(parse("chanx( 0)").is_err());
+        assert!(parse("chanx. 0").is_err());
 
         assert_eq!(
-            parse("  chan  foo  ( loop (0))"),
+            parse("  chan  foo  . loop (0)"),
             Ok(ast::Process::ChanDeclaration(
                 "foo".to_owned(),
                 Box::new(ast::Process::Loop(Box::new(ast::Process::Expr(
@@ -969,13 +969,12 @@ mod tests {
             ))
         );
 
-        //TODO: do tests on ids
         assert!(parse("chan x 17 ").is_err());
-        assert!(parse("chan x( 17 ").is_err());
-        assert!(parse("chan x 42 )").is_err());
+        //assert!(parse("chan x( 17 ").is_err());
+        //assert!(parse("chan x 42 )").is_err());
 
         assert_eq!(
-            parse("chan _ (9)"),
+            parse("chan _ .9"),
             Ok(ast::Process::ChanDeclaration(
                 "_".to_owned(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(
@@ -985,7 +984,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("chan _F (-42)"),
+            parse("chan _F .-42"),
             Ok(ast::Process::ChanDeclaration(
                 "_F".to_owned(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(
@@ -995,7 +994,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("chan b3 (-42)"),
+            parse("chan b3 .-42"),
             Ok(ast::Process::ChanDeclaration(
                 "b3".to_owned(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(
@@ -1005,7 +1004,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("chan b3/* commenting */(-42)"),
+            parse("chan b3/* commenting */.-42"),
             Ok(ast::Process::ChanDeclaration(
                 "b3".to_owned(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(
@@ -1015,7 +1014,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("chan chanx (-42)"),
+            parse("chan chanx .-42"),
             Ok(ast::Process::ChanDeclaration(
                 "chanx".to_owned(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(
@@ -1025,7 +1024,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("chan looppy (-42)"),
+            parse("chan looppy .-42"),
             Ok(ast::Process::ChanDeclaration(
                 "looppy".to_owned(),
                 Box::new(ast::Process::Expr(ast::Expression::IntExpr(
@@ -1034,53 +1033,53 @@ mod tests {
             ))
         );
 
-        assert!(parse("chan 6 (7)").is_err());
-        assert!(parse("chan 6a (7)").is_err());
-        assert!(parse("chan A (7)").is_err());
-        assert!(parse("chan Upp (7)").is_err());
-        assert!(parse("chan X_0 (7)").is_err());
-        assert!(parse("chan chan (7)").is_err());
-        assert!(parse("chan loop (7)").is_err());
-        assert!(parse("chan chan c (7)").is_err());
-        assert!(parse("chan loop l (7)").is_err());
-        assert!(parse("chan . (7)").is_err());
-        assert!(parse("chan ._ (7)").is_err());
-        assert!(parse("chan , (7)").is_err());
-        assert!(parse("chan ; (7)").is_err());
-        assert!(parse("chan : (7)").is_err());
-        assert!(parse("chan :aaa (7)").is_err());
-        assert!(parse("chan @ (7)").is_err());
-        assert!(parse("chan # (7)").is_err());
-        assert!(parse("chan ? (7)").is_err());
-        assert!(parse("chan ! (7)").is_err());
-        assert!(parse("chan !x (7)").is_err());
-        assert!(parse("chan $ (7)").is_err());
-        assert!(parse("chan ( (7)").is_err());
-        assert!(parse("chan () (7)").is_err());
-        assert!(parse("chan ~ (7)").is_err());
-        assert!(parse("chan ^ (7)").is_err());
-        assert!(parse("chan  (7)").is_err());
-        assert!(parse("chan + (7)").is_err());
-        assert!(parse("chan - (7)").is_err());
-        assert!(parse("chan -e (7)").is_err());
-        assert!(parse("chan -8 (7)").is_err());
-        assert!(parse("chan * (7)").is_err());
-        assert!(parse("chan / (7)").is_err());
-        assert!(parse("chan % (7)").is_err());
-        assert!(parse("chan < (7)").is_err());
-        assert!(parse("chan <p (7)").is_err());
-        assert!(parse("chan > (7)").is_err());
-        assert!(parse("chan = (7)").is_err());
-        assert!(parse("chan =c (7)").is_err());
-        assert!(parse("chan c c (7)").is_err());
-        assert!(parse("chan _ c (7)").is_err());
-        assert!(parse("chan i 777 (7)").is_err());
+        assert!(parse("chan 6 . 7").is_err());
+        assert!(parse("chan 6a . 7").is_err());
+        assert!(parse("chan A . 7").is_err());
+        assert!(parse("chan Upp . 7").is_err());
+        assert!(parse("chan X_0 . 7").is_err());
+        assert!(parse("chan chan . 7").is_err());
+        assert!(parse("chan loop . 7").is_err());
+        assert!(parse("chan chan c . 7").is_err());
+        assert!(parse("chan loop l . 7").is_err());
+        assert!(parse("chan . . 7").is_err());
+        assert!(parse("chan ._ . 7").is_err());
+        assert!(parse("chan , . 7").is_err());
+        assert!(parse("chan ; . 7").is_err());
+        assert!(parse("chan : . 7").is_err());
+        assert!(parse("chan :aaa . 7").is_err());
+        assert!(parse("chan @ . 7").is_err());
+        assert!(parse("chan # . 7").is_err());
+        assert!(parse("chan ? . 7").is_err());
+        assert!(parse("chan ! . 7").is_err());
+        assert!(parse("chan !x . 7").is_err());
+        assert!(parse("chan $ . 7").is_err());
+        assert!(parse("chan ( . 7").is_err());
+        assert!(parse("chan () . 7").is_err());
+        assert!(parse("chan ~ . 7").is_err());
+        assert!(parse("chan ^ . 7").is_err());
+        assert!(parse("chan  . 7").is_err());
+        assert!(parse("chan + . 7").is_err());
+        assert!(parse("chan - . 7").is_err());
+        assert!(parse("chan -e . 7").is_err());
+        assert!(parse("chan -8 . 7").is_err());
+        assert!(parse("chan * . 7").is_err());
+        assert!(parse("chan / . 7").is_err());
+        assert!(parse("chan % . 7").is_err());
+        assert!(parse("chan < . 7").is_err());
+        assert!(parse("chan <p . 7").is_err());
+        assert!(parse("chan > . 7").is_err());
+        assert!(parse("chan = . 7").is_err());
+        assert!(parse("chan =c . 7").is_err());
+        assert!(parse("chan c c . 7").is_err());
+        assert!(parse("chan _ c . 7").is_err());
+        assert!(parse("chan i 777 . 7").is_err());
     }
 
     #[test]
     fn should_parse_parallel_op() {
         assert_eq!(
-            parse("loop (17 + 9) | chan x( chan y ( loop (1-1) ))"),
+            parse("loop (17 + 9) | chan x. chan y . loop (1-1) "),
             Ok(ast::Process::Par(
                 Box::new(ast::Process::Loop(Box::new(ast::Process::Expr(
                     ast::Expression::IntExpr(ast::IntExpr::Add(
@@ -1104,7 +1103,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("loop (7 | chan x (0))"),
+            parse("loop (7 | chan x .0)"),
             Ok(Process::Loop(Box::new(Process::Par(
                 Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7)))),
                 Box::new(Process::ChanDeclaration(
@@ -1124,9 +1123,37 @@ mod tests {
             ))
         );
 
+        assert_eq!(
+            parse("chan c . 6 | 7"),
+            Ok(Process::ChanDeclaration(
+                "c".to_owned(),
+                Box::new(Process::Par(
+                    Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(6)))),
+                    Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7))))
+                ))
+            ))
+        );
+
+        assert_eq!(
+            parse("chan c . - 6 /8 | 2 -3"),
+            Ok(Process::ChanDeclaration(
+                "c".to_owned(),
+                Box::new(Process::Par(
+                    Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Div(
+                        Box::new(IntExpr::Neg(Box::new(IntExpr::Lit(6)))),
+                        Box::new(IntExpr::Lit(8))
+                    )))),
+                    Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Sub(
+                        Box::new(IntExpr::Lit(2)),
+                        Box::new(IntExpr::Lit(3))
+                    ))))
+                ))
+            ))
+        );
+
         assert!(parse("  | 9").is_err());
         assert!(parse("999 - 0 |").is_err());
         assert!(parse("999 +| 7").is_err());
-        assert!(parse("chan dd (8|) ").is_err());
+        assert!(parse("chan dd .8| ").is_err());
     }
 }

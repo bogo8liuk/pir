@@ -1,1 +1,1 @@
-chan x ( loop (0) )
+chan x . loop (0) 
