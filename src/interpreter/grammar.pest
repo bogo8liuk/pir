@@ -9,12 +9,23 @@ program = _{
 	  SOI ~ process ~ EOI
 }
 
-process = !{ process_primary ~ (proc_infix ~ process_primary)* }
+process = !{ process_enclosing }
+
+// The parenthesys enclosing cannot be placed only into `process_primary` rule
+// because statements with infix operators (for processes) would be cut out
+// otherwise
+process_enclosing = _{
+	  process_sequence
+	| enclosing_start_keyword ~ process_enclosing ~ enclosing_end_keyword
+}
+
+process_sequence = _{ process_primary ~ (proc_infix ~ process_primary)* }
 
 process_primary = _{
 	  loop
 	| expression
 	| channel_declaration
+	| enclosing_start_keyword ~ process_primary ~ enclosing_end_keyword
 }
 
 loop = {

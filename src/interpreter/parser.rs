@@ -1156,4 +1156,51 @@ mod tests {
         assert!(parse("999 +| 7").is_err());
         assert!(parse("chan dd .8| ").is_err());
     }
+
+    #[test]
+    fn should_parse_enclosed_process() {
+        assert_eq!(parse("loop (chan v . 8)"), parse("(loop (chan v . (8)))"));
+
+        assert_eq!(
+            parse("('F' | 7)"),
+            Ok(Process::Par(
+                Box::new(Process::Expr(ast::Expression::Val(ast::Value::Char(
+                    'F' as u32
+                )))),
+                Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7))))
+            ))
+        );
+
+        assert_eq!(
+            parse("(((((7|(\"hi\"))))))"),
+            Ok(Process::Par(
+                Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7)))),
+                Box::new(Process::Expr(ast::Expression::Val(ast::Value::Str(
+                    "hi".to_owned()
+                ))))
+            )) //Ok(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7))))
+        );
+
+        assert_eq!(
+            parse("loop (((0+42)))"),
+            Ok(Process::Loop(Box::new(Process::Expr(
+                ast::Expression::IntExpr(IntExpr::Add(
+                    Box::new(IntExpr::Lit(0)),
+                    Box::new(IntExpr::Lit(42))
+                ))
+            ))))
+        );
+
+        assert!(parse("(((8|1))").is_err());
+        assert!(parse("((loop(5)|-1)))").is_err());
+    }
+
+    #[test]
+    fn should_parse_send() {}
+
+    #[test]
+    fn should_parse_receive() {}
+
+    #[test]
+    fn should_parse_send_receive_with_par() {}
 }
