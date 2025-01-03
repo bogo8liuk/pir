@@ -1267,7 +1267,7 @@ mod tests {
     #[test]
     fn should_parse_receive() {
         assert_eq!(
-            parse("myvar = receive internet . loop('@')"),
+            parse("let myvar = receive internet . loop('@')"),
             Ok(Process::Receive(
                 "myvar".to_owned(),
                 "internet".to_owned(),
@@ -1278,7 +1278,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse("myvar=receive internet.loop('@')"),
+            parse("let myvar=receive internet.loop('@')"),
             Ok(Process::Receive(
                 "myvar".to_owned(),
                 "internet".to_owned(),
@@ -1288,18 +1288,62 @@ mod tests {
             ))
         );
 
-        assert!(parse("myvar receive internet . loop('@')").is_err());
-        assert!(parse("Myvar=receive internet . loop('@')").is_err());
-        assert!(parse("myvar=receive 1 . loop('@')").is_err());
-        assert!(parse("myvar=receive internet").is_err());
-        assert!(parse("myvar=receive internet .").is_err());
-        assert!(parse("8myvar=receive internet . loop('@')").is_err());
-        assert!(parse("receive=receive internet . loop('@')").is_err());
-        assert!(parse("myvar=receive receive . loop('@')").is_err());
-        assert!(parse("myvar=receive send . loop('@')").is_err());
-        assert!(parse("receive internet . loop('@')").is_err());
+        assert!(parse("let myvar receive internet . loop('@')").is_err());
+        assert!(parse("letmyvar = receive internet . loop('@')").is_err());
+        assert!(parse("myvar = receive internet . loop('@')").is_err());
+        assert!(parse("let Myvar=receive internet . loop('@')").is_err());
+        assert!(parse("let myvar=receive 1 . loop('@')").is_err());
+        assert!(parse("let myvar=receive internet").is_err());
+        assert!(parse("let myvar=receive internet .").is_err());
+        assert!(parse("let 8myvar=receive internet . loop('@')").is_err());
+        assert!(parse("let receive=receive internet . loop('@')").is_err());
+        assert!(parse("let myvar=receive receive . loop('@')").is_err());
+        assert!(parse("let myvar=receive send . loop('@')").is_err());
+        assert!(parse("let receive internet . loop('@')").is_err());
     }
 
     #[test]
-    fn should_parse_send_receive_with_par() {}
+    fn should_parse_send_receive_with_par() {
+        assert_eq!(
+            parse("send 5 k. 8 | 9"),
+            Ok(Process::Send(
+                Expression::IntExpr(IntExpr::Lit(5)),
+                "k".to_string(),
+                Box::new(Process::Par(
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9))))
+                ))
+            ))
+        );
+
+        assert_eq!(
+            parse("let p=receive k. 8 | 9"),
+            Ok(Process::Receive(
+                "p".to_owned(),
+                "k".to_owned(),
+                Box::new(Process::Par(
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9))))
+                ))
+            ))
+        );
+
+        assert_eq!(
+            parse("(let u = receive f. loop (\"hi\")) | send 11 f . 44"),
+            Ok(Process::Par(
+                Box::new(Process::Receive(
+                    "u".to_owned(),
+                    "f".to_owned(),
+                    Box::new(Process::Loop(Box::new(Process::Expr(Expression::Val(
+                        ast::Value::Str("hi".to_owned())
+                    )))))
+                )),
+                Box::new(Process::Send(
+                    Expression::IntExpr(IntExpr::Lit(11)),
+                    "f".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(44))))
+                ))
+            ))
+        );
+    }
 }
