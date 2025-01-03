@@ -386,7 +386,7 @@ mod tests {
     use std::{f32::INFINITY, str::FromStr};
 
     use super::*;
-    use crate::interpreter::ast;
+    use crate::interpreter::ast::{self, Expression};
 
     #[test]
     fn should_parse_char_lit_correctly() {
@@ -1178,7 +1178,7 @@ mod tests {
                 Box::new(Process::Expr(ast::Expression::Val(ast::Value::Str(
                     "hi".to_owned()
                 ))))
-            )) //Ok(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7))))
+            ))
         );
 
         assert_eq!(
@@ -1196,7 +1196,73 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_send() {}
+    fn should_parse_send() {
+        assert_eq!(
+            parse("send (1 + 1) ch . 8"),
+            Ok(Process::Send(
+                ast::Expression::IntExpr(IntExpr::Add(
+                    Box::new(IntExpr::Lit(1)),
+                    Box::new(IntExpr::Lit(1))
+                )),
+                "ch".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
+            ))
+        );
+
+        assert!(parse("send 1 + 1 ch . 8").is_err());
+        assert!(parse("send (1 + 1) ch").is_err());
+        assert!(parse("send (1 + 1) send . 8").is_err());
+        assert!(parse("send (1 + 1) receive . 8").is_err());
+        assert!(parse("send (1 + 1) loop . 8").is_err());
+        assert!(parse("send (1 + 1) chan . 8").is_err());
+        assert!(parse("send (chan x . 7) ch . 8").is_err());
+
+        assert_eq!(
+            parse("  send\"\" mychannel . loop (99)"),
+            Ok(Process::Send(
+                Expression::Val(ast::Value::Str("".to_owned())),
+                "mychannel".to_owned(),
+                Box::new(Process::Loop(Box::new(Process::Expr(Expression::IntExpr(
+                    IntExpr::Lit(99)
+                )))))
+            ))
+        );
+
+        assert_ne!(
+            parse("  send3 mychannel . loop (99)"),
+            Ok(Process::Send(
+                Expression::IntExpr(IntExpr::Lit(3)),
+                "mychannel".to_owned(),
+                Box::new(Process::Loop(Box::new(Process::Expr(Expression::IntExpr(
+                    IntExpr::Lit(99)
+                )))))
+            ))
+        );
+
+        assert_eq!(
+            parse("  send 3 mychannel . loop (99)"),
+            Ok(Process::Send(
+                Expression::IntExpr(IntExpr::Lit(3)),
+                "mychannel".to_owned(),
+                Box::new(Process::Loop(Box::new(Process::Expr(Expression::IntExpr(
+                    IntExpr::Lit(99)
+                )))))
+            ))
+        );
+
+        assert!(parse("  send -3 mychannel . loop (99)").is_err());
+
+        assert_eq!(
+            parse("  send 3 mychannel . loop (99)"),
+            Ok(Process::Send(
+                Expression::IntExpr(IntExpr::Neg(Box::new(IntExpr::Lit(3)))),
+                "mychannel".to_owned(),
+                Box::new(Process::Loop(Box::new(Process::Expr(Expression::IntExpr(
+                    IntExpr::Lit(99)
+                )))))
+            ))
+        );
+    }
 
     #[test]
     fn should_parse_receive() {}
