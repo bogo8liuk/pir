@@ -104,6 +104,18 @@ fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
                     },
                 )
             }
+            Rule::receive => {
+                let tokens = pair.into_inner();
+                let (var_id, updated_tokens) = make_var_id(tokens);
+                let (chan_id, mut updated_tokens) = make_channel_id(updated_tokens);
+
+                let sub_tokens = updated_tokens
+                    .next()
+                    .expect("Expecting a process")
+                    .into_inner();
+                make_process(sub_tokens)
+                    .map(|proc| Process::Receive(var_id, chan_id, Box::new(proc)))
+            }
             rule => unreachable!("Unexpected rule {:?}, expecting one of process", rule),
         })
         .map_infix(|lhs, op, rhs| {
@@ -122,6 +134,16 @@ fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
 
 // This function gives back ownership of pairs
 fn make_channel_id(mut pairs: Pairs<Rule>) -> (String, Pairs<Rule>) {
+    let pair = pairs.next().expect("Expecting a channel id");
+    let rule = pair.as_rule();
+
+    match rule {
+        Rule::var_identifier => (pair.as_str().into(), pairs),
+        _ => unreachable!("Expecting a channel id, found rule {:?}", rule),
+    }
+}
+
+fn make_var_id(mut pairs: Pairs<Rule>) -> (String, Pairs<Rule>) {
     let pair = pairs.next().expect("Expecting a channel id");
     let rule = pair.as_rule();
 

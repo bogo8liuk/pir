@@ -5,6 +5,8 @@ reserved_keyword = _{
 	| channel_declaration_keyword
 	| send_keyword
 	| receive_keyword
+	| assignment_keyword
+	| var_declaration_keyword
 	| proc_then
 }
 
@@ -27,6 +29,7 @@ process_sequence = _{ process_primary ~ (proc_infix ~ process_primary)* }
 process_primary = _{
 	  loop
 	| send
+	| receive
 	| expression
 	| channel_declaration
 	| enclosing_start_keyword ~ process_primary ~ enclosing_end_keyword
@@ -83,12 +86,22 @@ single_term_expression_after_send = ${
 	// TODO: variables
 }
 
+receive = ${ var_declaration_keyword ~ at_least_one_non_semantics ~ var_identifier ~
+	non_semantics ~ assignment_keyword ~ non_semantics ~ receive_keyword ~
+	at_least_one_non_semantics ~ channel_identifier ~ non_semantics ~ proc_then ~
+	non_semantics ~ process
+}
+
 receive_keyword = _{ "receive" }
 
-isolated_keyword = _{ reserved_keyword ~ at_least_one_non_semantics }
+assignment_keyword = _{ "=" }
+var_declaration_keyword = _{ "let" }
+
+isolated_keyword = _{ reserved_keyword ~ !id_acceptable_char }
 var_identifier = ${ !isolated_keyword ~ (head_var_identifier_char ~ tail_var_identifier_char*) }
 channel_identifier = _{ var_identifier }
 
+id_acceptable_char = _{ ASCII_ALPHA | "_" | ASCII_DIGIT }
 head_var_identifier_char = _{ ASCII_ALPHA_LOWER | "_" }
 tail_var_identifier_char = _{ ASCII_ALPHA | "_" | ASCII_DIGIT }
 
