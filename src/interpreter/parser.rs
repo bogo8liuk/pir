@@ -63,44 +63,48 @@ pub fn parse<'a>(src: &'a str) -> Result<ast::Process, ParserErr> {
     }
 }
 
-fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, Error<Rule>> {
+fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
     PROC_PRATT_PARSER
-        .map_primary(|pair| {
-            match pair.as_rule() {
-                Rule::expression => {
-                    let tokens = pair.into_inner();
-                    let expr = make_expression(tokens);
-                    expr.map(|x| ast::Process::Expr(x))
-                }
-                Rule::r#loop => {
-                    let tokens = pair
-                        .into_inner()
-                        .next()
-                        .expect("Expecting a process")
-                        .into_inner();
-                    let sub_proc = make_process(tokens);
-                    sub_proc.map(|p| ast::Process::Loop(Box::new(p)))
-                }
-                Rule::channel_declaration => {
-                    let tokens = pair.into_inner();
-                    let (chan_id, mut updated_tokens) = make_channel_id(tokens);
-                    // Skipping process `then` operator
-                    //updated_tokens
-                    //    .next()
-                    //    .expect("Expecting process sequence operator");
-
-                    match make_process(
-                        updated_tokens
+        .map_primary(|pair| match pair.as_rule() {
+            Rule::expression => {
+                let tokens = pair.into_inner();
+                make_expression(tokens).map(ast::Process::Expr)
+            }
+            Rule::r#loop => {
+                let tokens = pair
+                    .into_inner()
+                    .next()
+                    .expect("Expecting a process")
+                    .into_inner();
+                let sub_proc = make_process(tokens);
+                sub_proc.map(|p| ast::Process::Loop(Box::new(p)))
+            }
+            Rule::channel_declaration => {
+                let tokens = pair.into_inner();
+                let (chan_id, mut updated_tokens) = make_channel_id(tokens);
+                let process_tokens = updated_tokens
+                    .next()
+                    .expect("Expecting a process")
+                    .into_inner();
+                make_process(process_tokens)
+                    .map(|proc| ast::Process::ChanDeclaration(chan_id, Box::new(proc)))
+            }
+            Rule::send => {
+                let tokens = pair.into_inner();
+                make_expression_after_send(tokens).map_or_else(
+                    |err| Err(err),
+                    |(expr, updated_tokens)| {
+                        let (chan_id, mut updated_tokens) = make_channel_id(updated_tokens);
+                        let updated_tokens = updated_tokens
                             .next()
                             .expect("Expecting a process")
-                            .into_inner(),
-                    ) {
-                        Ok(proc) => Ok(ast::Process::ChanDeclaration(chan_id, Box::new(proc))),
-                        Err(e) => Err(e),
-                    }
-                }
-                rule => unreachable!("Unexpected rule {:?}, expecting one of process", rule),
+                            .into_inner();
+                        make_process(updated_tokens)
+                            .map(|proc| Process::Send(expr, chan_id, Box::new(proc)))
+                    },
+                )
             }
+            rule => unreachable!("Unexpected rule {:?}, expecting one of process", rule),
         })
         .map_infix(|lhs, op, rhs| {
             let op = match op.as_rule() {
@@ -116,62 +120,71 @@ fn make_process(pairs: Pairs<Rule>) -> Result<ast::Process, Error<Rule>> {
         .parse(pairs)
 }
 
-/*
-fn make_process(mut pairs: Pairs<Rule>) -> Result<ast::Process, ParserErr> {
-    let pair = pairs.next().expect("Expecting a type of process");
-    let rule = pair.as_rule();
-
-    match rule {
-        Rule::expression => {
-            let tokens = pair.into_inner();
-            let expr = make_expression(tokens);
-            expr.map(|x| ast::Process::Expr(x))
-        }
-        Rule::r#loop => {
-            let tokens = pair
-                .into_inner()
-                .next()
-                .expect("Expecting a process")
-                .into_inner();
-            let sub_proc = make_process(tokens);
-            sub_proc.map(|p| ast::Process::Loop(Box::new(p)))
-        }
-        Rule::channel_declaration => {
-            let tokens = pair.into_inner();
-            let (chan_id, mut updated_tokens) = make_channel_id(tokens);
-            // Skipping process `and` operator
-            updated_tokens
-                .next()
-                .expect("Expecting process sequence operator");
-
-            match make_process(
-                updated_tokens
-                    .next()
-                    .expect("Expecting a process")
-                    .into_inner(),
-            ) {
-                Ok(proc) => Ok(ast::Process::ChanDeclaration(chan_id, Box::new(proc))),
-                Err(e) => Err(e),
-            }
-        }
-        _ => {
-            unreachable!(
-                "Unreachable code: expecting a sub-rule of process, found {:?}",
-                rule
-            )
-        }
-    }
-}
-*/
-
 // This function gives back ownership of pairs
 fn make_channel_id(mut pairs: Pairs<Rule>) -> (String, Pairs<Rule>) {
-    let pair = pairs.next().expect("Expecting a channel declaration");
+    let pair = pairs.next().expect("Expecting a channel id");
     let rule = pair.as_rule();
 
     match rule {
         Rule::var_identifier => (pair.as_str().into(), pairs),
         _ => unreachable!("Expecting a channel id, found rule {:?}", rule),
+    }
+}
+
+fn make_expression_after_send(
+    mut pairs: Pairs<Rule>,
+) -> Result<(ast::Expression, Pairs<Rule>), ParserErr> {
+    let pair = pairs.next().expect("Expecting an expression after `send`");
+    let rule = pair.as_rule();
+
+    match rule {
+        Rule::enclosed_expression_after_send => {
+            let tokens = pair
+                .into_inner()
+                .next()
+                .expect("Expecting an enclosed expression after `send`")
+                .into_inner();
+            make_expression(tokens).map(|expr| (expr, pairs))
+        }
+        Rule::single_term_expression_after_send => {
+            let tokens = pair.into_inner();
+            make_single_term_expression(tokens).map(|(expr, _)| (expr, pairs))
+        }
+        _ => unreachable!(
+            "Expecting an expression after `send`, found rule {:?}",
+            rule
+        ),
+    }
+}
+
+fn make_single_term_expression(
+    mut pairs: Pairs<Rule>,
+) -> Result<(ast::Expression, Pairs<Rule>), ParserErr> {
+    let pair = pairs
+        .next()
+        .expect("Expecting a single-term expression after `send`");
+    let rule = pair.as_rule();
+
+    fn make_expr<'a, V>(
+        pairs: Pairs<'a, Rule>,
+        build: impl FnOnce(V) -> ast::Expression,
+    ) -> impl FnOnce(V) -> (ast::Expression, Pairs<'a, Rule>) {
+        |val| (build(val), pairs)
+    }
+
+    match rule {
+        Rule::string_literal => {
+            string_literal_result(pair).map(make_expr(pairs, ast::Expression::Val))
+        }
+        Rule::char_literal => char_literal_result(pair).map(make_expr(pairs, ast::Expression::Val)),
+        Rule::int_literal => {
+            i32_literal_result(pair).map(make_expr(pairs, ast::Expression::IntExpr))
+        }
+        Rule::float_literal => f32_literal_result(pair).map(make_expr(pairs, ast::Expression::Val)),
+        _ => unreachable!(
+            "Expecting a sub-rule of single-term expression, found {:?}",
+            rule
+        ),
     }
 }
 
@@ -182,8 +195,7 @@ fn make_expression(mut pairs: Pairs<Rule>) -> Result<ast::Expression, ParserErr>
     match rule {
         Rule::value => {
             let tokens = pair.into_inner();
-            let val = make_value(tokens);
-            val.map(|x| ast::Expression::Val(x))
+            make_value(tokens).map(ast::Expression::Val)
         }
         Rule::int_expr => {
             let sub_pairs = pair.into_inner();
@@ -249,45 +261,67 @@ fn make_value(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
 }
 
 fn make_literal(mut pairs: Pairs<Rule>) -> Result<ast::Value, ParserErr> {
-    let pairs_clone = pairs.clone();
     let pair = pairs.next().expect("Expecting a literal");
     let rule = pair.as_rule();
 
     match rule {
-        Rule::string_literal => {
-            let tokens = pair.into_inner();
-            Ok(make_string_literal(tokens))
-        }
-        Rule::char_literal => {
-            let pair_clone = pair.clone();
-            let tokens = pair.into_inner();
-            make_char_literal(tokens).map_err(|e| match e {
-                CharParseError::Empty => custom_error_from_span(
-                    String::from("No character to parse"),
-                    pair_clone.as_span(),
-                ),
-                CharParseError::MultipleChars { chars: _ } => custom_error_from_span(
-                    String::from("Characters to parse are more than one"),
-                    pair_clone.as_span(),
-                ),
-            })
-        }
-        Rule::int_literal => {
-            let lit_res = make_i32_literal(pairs_clone);
-            lit_res.map_or_else(
-                |p| Err(stringable_error_to_parser_error(p, pair)),
-                |i| Ok(i),
-            )
-        }
-        Rule::float_literal => {
-            let lit_res = make_f32_literal(pairs_clone);
-            lit_res.map_or_else(
-                |p| Err(stringable_error_to_parser_error(p, pair)),
-                |fl| Ok(fl),
-            )
-        }
+        Rule::string_literal => string_literal_result(pair),
+        Rule::char_literal => char_literal_result(pair),
+        //Rule::int_literal => {
+        //    i32_literal_result(pair)
+        //    //let lit_res = make_i32_literal(pairs_clone);
+        //    //lit_res.map_or_else(
+        //    //    |p| Err(stringable_error_to_parser_error(p, pair)),
+        //    //    |i| Ok(i),
+        //    //)
+        //}
+        //Rule::float_literal => {
+        //    f32_literal_result(pair)
+        //    //let lit_res = make_f32_literal(pairs_clone);
+        //    //lit_res.map_or_else(
+        //    //    |p| Err(stringable_error_to_parser_error(p, pair)),
+        //    //    |fl| Ok(fl),
+        //    //)
+        //}
         _ => unreachable!("Unexpected syntax error, string literal rule should be matched"), //Result::Err(Err(pair)),
     }
+}
+
+fn string_literal_result<E>(pair: Pair<Rule>) -> Result<ast::Value, E> {
+    let tokens = pair.into_inner();
+    Ok(make_string_literal(tokens))
+}
+
+fn char_literal_result(pair: Pair<Rule>) -> Result<ast::Value, ParserErr> {
+    let pair_clone = pair.clone();
+    let tokens = pair.into_inner();
+    make_char_literal(tokens).map_err(|e| match e {
+        CharParseError::Empty => {
+            custom_error_from_span(String::from("No character to parse"), pair_clone.as_span())
+        }
+        CharParseError::MultipleChars { chars: _ } => custom_error_from_span(
+            String::from("Characters to parse are more than one"),
+            pair_clone.as_span(),
+        ),
+    })
+}
+
+fn i32_literal_result(pair: Pair<Rule>) -> Result<ast::IntExpr, ParserErr> {
+    let pair_clone = pair.clone();
+    let tokens = pair.into_inner();
+    make_raw_i32_literal(tokens).map_or_else(
+        |p| Err(stringable_error_to_parser_error(p, pair_clone)),
+        |i| Ok(IntExpr::Lit(i)),
+    )
+}
+
+fn f32_literal_result(pair: Pair<Rule>) -> Result<ast::Value, ParserErr> {
+    let pair_clone = pair.clone();
+    let tokens = pair.into_inner();
+    make_f32_literal(tokens).map_or_else(
+        |p| Err(stringable_error_to_parser_error(p, pair_clone)),
+        |fl| Ok(fl),
+    )
 }
 
 fn custom_error_from_span(msg: String, span: Span) -> ParserErr {
@@ -1253,7 +1287,7 @@ mod tests {
         assert!(parse("  send -3 mychannel . loop (99)").is_err());
 
         assert_eq!(
-            parse("  send 3 mychannel . loop (99)"),
+            parse("  send (-3) mychannel . loop (99)"),
             Ok(Process::Send(
                 Expression::IntExpr(IntExpr::Neg(Box::new(IntExpr::Lit(3)))),
                 "mychannel".to_owned(),

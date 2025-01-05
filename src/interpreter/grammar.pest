@@ -3,6 +3,9 @@
 reserved_keyword = _{
 	  loop_keyword
 	| channel_declaration_keyword
+	| send_keyword
+	| receive_keyword
+	| proc_then
 }
 
 program = _{
@@ -23,6 +26,7 @@ process_sequence = _{ process_primary ~ (proc_infix ~ process_primary)* }
 
 process_primary = _{
 	  loop
+	| send
 	| expression
 	| channel_declaration
 	| enclosing_start_keyword ~ process_primary ~ enclosing_end_keyword
@@ -52,6 +56,35 @@ channel_declaration_keyword = _{ "chan" }
 channel_scope_start_keyword = _{ enclosing_start_keyword }
 channel_scope_end_keyword = _{ enclosing_end_keyword }
 
+// Using `$` for the same reason of `channel_declaration` rule
+send = ${ send_keyword ~ expression_after_send ~ non_semantics ~
+	channel_identifier ~ non_semantics ~ proc_then ~ non_semantics ~ process }
+
+send_keyword = _{ "send" }
+
+// Any expression after send keyword must be enclosed with the exception for
+// single-term expressions (is this the right terminology???), for instance
+// literals and variables. This is quite ugly because we have to
+// programmatically rehandle what we already handle in expressions (two sources
+// of truth).
+expression_after_send = _{
+	  enclosed_expression_after_send
+	| single_term_expression_after_send
+}
+enclosed_expression_after_send = ${ non_semantics ~ expr_start_keyword ~
+	non_semantics ~ expression ~ non_semantics ~ expr_end_keyword }
+// Single-term expressions have to be treated case by case, because some (but
+// not all) of them requires at least one whitespace or comment.
+single_term_expression_after_send = ${
+	  (non_semantics ~ string_literal)
+	| (non_semantics ~ char_literal)
+	| (at_least_one_non_semantics ~ int_literal)
+	| (at_least_one_non_semantics ~ float_literal)
+	// TODO: variables
+}
+
+receive_keyword = _{ "receive" }
+
 isolated_keyword = _{ reserved_keyword ~ at_least_one_non_semantics }
 var_identifier = ${ !isolated_keyword ~ (head_var_identifier_char ~ tail_var_identifier_char*) }
 channel_identifier = _{ var_identifier }
@@ -59,7 +92,7 @@ channel_identifier = _{ var_identifier }
 head_var_identifier_char = _{ ASCII_ALPHA_LOWER | "_" }
 tail_var_identifier_char = _{ ASCII_ALPHA | "_" | ASCII_DIGIT }
 
-expression = {
+expression = !{
 	  int_expr
 	| value
 }
