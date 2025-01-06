@@ -1,5 +1,6 @@
 pub type NameId = String;
-#[derive(PartialEq, Eq, Debug)]
+// NB: if you add cases to this type, remember to box everything is large
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Value {
     I32(i32),
     Channel,
@@ -41,12 +42,11 @@ impl NamesStack {
         self.bindings.pop()
     }
 
-    // It is important not to clone values
-    pub fn lookup(&self, name_id: NameId) -> Option<&Value> {
+    pub fn lookup(&self, name_id: NameId) -> Option<Value> {
         self.bindings
             .iter()
             .rfind(|&(n, _)| *n == name_id)
-            .map(|(_, v)| v)
+            .map(|(_, v)| v.clone())
     }
 }
 
@@ -74,9 +74,9 @@ mod tests {
         stack.push("key3".to_string(), Value::I32(30));
         stack.push("key1".to_string(), Value::I32(40));
 
-        assert_eq!(stack.lookup("key1".to_string()), Some(&Value::I32(40)));
-        assert_eq!(stack.lookup("key2".to_string()), Some(&Value::Channel));
-        assert_eq!(stack.lookup("key3".to_string()), Some(&Value::I32(30)));
+        assert_eq!(stack.lookup("key1".to_string()), Some(Value::I32(40)));
+        assert_eq!(stack.lookup("key2".to_string()), Some(Value::Channel));
+        assert_eq!(stack.lookup("key3".to_string()), Some(Value::I32(30)));
         assert_eq!(stack.lookup("key4".to_string()), None);
     }
 
@@ -88,11 +88,11 @@ mod tests {
         stack.push("key2".to_string(), Value::Channel);
         stack.push("key3".to_string(), Value::I32(30));
 
-        assert_eq!(stack.lookup("key2".to_string()), Some(&Value::Channel));
+        assert_eq!(stack.lookup("key2".to_string()), Some(Value::Channel));
         assert_eq!(stack.pop(), Some(("key3".to_string(), Value::I32(30))));
-        assert_eq!(stack.lookup("key2".to_string()), Some(&Value::Channel));
+        assert_eq!(stack.lookup("key2".to_string()), Some(Value::Channel));
         assert_eq!(stack.pop(), Some(("key2".to_string(), Value::Channel)));
-        assert_eq!(stack.lookup("key1".to_string()), Some(&Value::I32(10)));
+        assert_eq!(stack.lookup("key1".to_string()), Some(Value::I32(10)));
         assert_eq!(stack.pop(), Some(("key1".to_string(), Value::I32(10))));
         assert_eq!(stack.pop(), None);
     }

@@ -10,6 +10,8 @@ use tokio::{
 
 use crate::interpreter::{ast::*, context::NamesStack};
 
+use super::context;
+
 type ToFlush = String;
 
 #[derive(Debug)]
@@ -102,11 +104,17 @@ struct StackHandle {
 
 struct StackMessage {
     payload: StackMessagePayload,
-    respond_to: oneshot::Sender<()>,
+    respond_to: oneshot::Sender<StackMessageResponse>,
 }
 
 enum StackMessagePayload {
     PushChannel(String),
+    Lookup(String),
+}
+
+enum StackMessageResponse {
+    Nothing,
+    StackValue(context::Value),
 }
 
 impl StackActor {
@@ -114,7 +122,13 @@ impl StackActor {
         match msg.payload {
             StackMessagePayload::PushChannel(id) => {
                 self.names_stack.push_channel(id);
-                let _ = msg.respond_to.send(());
+                let _ = msg.respond_to.send(StackMessageResponse::Nothing);
+            }
+            StackMessagePayload::Lookup(id) => {
+                match self.names_stack.lookup(id) {
+                    Some(val) => msg.respond_to.send(StackMessageResponse::StackValue(val)),
+                    None => msg.respond_to.send(StackMessageResponse::Nothing),
+                };
             }
         }
     }
@@ -139,10 +153,21 @@ impl StackHandle {
         Self { sender }
     }
 
-    async fn push_channel(&self, id: String) {
+    async fn push_channel(&self, id: String) -> StackMessageResponse {
         let (send, recv) = oneshot::channel();
         let msg = StackMessage {
             payload: StackMessagePayload::PushChannel(id),
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+
+    async fn lookup(&self, id: String) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::Lookup(id),
             respond_to: send,
         };
 
