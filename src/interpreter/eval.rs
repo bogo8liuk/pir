@@ -29,8 +29,8 @@ pub async fn eval_and_flush(process: Process) {
     let to_flush_res = eval_process(Box::new(process), names_stack_handle).await;
 
     match to_flush_res {
-        Ok(to_flush) => println!("{}", to_flush.as_str()),
-        Err(err) => println!("{}", err),
+        (Ok(to_flush), _) => println!("{}", to_flush.as_str()),
+        (Err(err), names_stack_handle) => println!("{}", err), // TODO: print stack trace
     }
 }
 
@@ -43,9 +43,9 @@ especially with async recursion. */
 async fn eval_process(
     process: Box<Process>,
     names_stack_handle: StackHandle,
-) -> Result<ToFlush, ProcError> {
+) -> (Result<ToFlush, ProcError>, StackHandle) {
     match *process {
-        Process::Expr(expr) => eval_expr(&expr),
+        Process::Expr(expr) => (eval_expr(&expr), names_stack_handle),
         Process::Loop(proc) => {
             loop {
                 let handle_clone = names_stack_handle.clone();
@@ -53,9 +53,9 @@ async fn eval_process(
                 let res = Box::pin(eval_process(proc.clone(), handle_clone)).await;
 
                 match res {
-                    Ok(_) => (),
+                    (Ok(_), _) => (),
                     // Break on errors
-                    Err(_) => return res,
+                    (Err(_), _) => return res,
                 }
             }
             //"".to_owned()
@@ -71,7 +71,7 @@ async fn eval_process(
             fn eval_wrap(
                 process: Box<Process>,
                 names_stack_handle: StackHandle,
-            ) -> JoinHandle<Result<ToFlush, ProcError>> {
+            ) -> JoinHandle<(Result<ToFlush, ProcError>, StackHandle)> {
                 tokio::spawn(eval_process(process, names_stack_handle))
             }
             let handle_clone = names_stack_handle.clone();
@@ -82,9 +82,13 @@ async fn eval_process(
             let res2 = join2.await.unwrap();
 
             match (res1, res2) {
-                (Ok(v1), Ok(v2)) => Ok(["<", v1.as_str(), ",", v2.as_str(), ">"].concat()),
-                (Err(e1), _) => Err(e1),
-                (_, Err(e2)) => Err(e2),
+                ((Ok(v1), names_stack_handle), (Ok(v2), _)) => (
+                    Ok(["<", v1.as_str(), ",", v2.as_str(), ">"].concat()),
+                    // Completely arbitrary: returning the first stack handle
+                    names_stack_handle,
+                ),
+                ((Err(e1), names_stack_handle), _) => (Err(e1), names_stack_handle),
+                ((_, names_stack_handle), (Err(e2), _)) => (Err(e2), names_stack_handle),
             }
         }
         Process::Send(_, _, _) => todo!(),
@@ -316,24 +320,27 @@ fn eval_int_expr(expr: &IntExpr) -> ExprResult<i32> {
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::{
-        context::NamesStack,
-        eval::{eval_process, Expression, IntExpr, Process},
+    use crate::interpreter::eval::{
+        eval_process, Expression, IntExpr, Process, StackHandle, StackMessageResponse,
     };
 
-    //#[test]
-    //fn should_add_name() {
-    //    let mut names_stack = NamesStack::new();
-    //    let process = Process::ChanDeclaration(
-    //        "a_name".to_string(),
-    //        Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
-    //    );
+    #[tokio::test]
+    async fn should_add_name() {
+        let names_stack_handle = StackHandle::new();
+        let process = Process::ChanDeclaration(
+            "a_name".to_string(),
+            Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
+        );
 
-    //    eval_process(&process, &mut names_stack);
+        let (_, names_stack_handle) = eval_process(Box::new(process), names_stack_handle).await;
 
-    //    assert!(
-    //        names_stack.lookup("a_name".to_owned()).is_some(),
-    //        "Expected 'a_name' to be in the names stack"
-    //    );
-    //}
+        let has_stack_value = match names_stack_handle.lookup("a_name".to_owned()).await {
+            StackMessageResponse::StackValue(_) => true,
+            _ => false,
+        };
+        assert!(
+            has_stack_value,
+            "Expected 'a_name' to be in the names stack"
+        );
+    }
 }
