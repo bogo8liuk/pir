@@ -15,16 +15,56 @@ pub fn valueOf(binding: NameBinding) -> Value {
     binding.1
 }
 
+pub type ActorId = String;
+
+/*
+               +---------+-------+
+               | name-id | value |
+               +---------+-------+
+                      \   /
+                       \ /
+                      +-V-+---+---+---+---+---+---+---+---+
+bindings              | * |   |   |   |   |   |   |   |   | ...
+(the effective stack) +---+---+---+---+---+---+---+---+---+
+
+
+     actor-id             index
+         ^                  ^
+         |                  |
+       +-|-+  +---+---+---+-|-+---+---+---+---+
+scopes | * |  |   |   |   | * |   |   |   |   | ...
+       +---+  +---+---+---+---+---+---+---+---+
+       |   |  |   |   |   |   |   |   |   |   |
+       +---+  +---+---+---+---+---+---+---+---+
+       |   |  |   |   |   |   |   |   |   |   |
+       +---+  +---+---+---+---+---+---+---+---+
+       |   |  |   |   |   |   |   |   |   |   |
+       +---+  +---+---+---+---+---+---+---+---+
+           ...
+
+`bindings` are the real stack where variables are stored; two way of storing
+variables:
+  1) unboxed;
+  2) boxed;
+
+`scopes` are a table to trace which variables the processes can see. The
+processes are represented by actor-ids (which don't necessarily correspond to
+process-ids). Each actor-id is associated with a set of indexes which are the
+ones that are visible in the stack to the actor.
+*/
 pub struct NamesStack {
     bindings: Vec<NameBinding>,
+    scopes: Vec<(ActorId, Vec<i32>)>,
 }
 
 impl NamesStack {
-    const DEFAULT_NAMES_CAPACITY: usize = 10;
+    const DEFAULT_NAMES_CAPACITY: usize = 16;
+    const DEFAULT_SCOPES_CAPACITY: usize = 16;
 
     pub fn new() -> Self {
         NamesStack {
             bindings: Vec::with_capacity(Self::DEFAULT_NAMES_CAPACITY),
+            scopes: Vec::with_capacity(Self::DEFAULT_SCOPES_CAPACITY),
         }
     }
 
