@@ -1,3 +1,4 @@
+mod actor;
 mod ast;
 mod context;
 mod eval;
