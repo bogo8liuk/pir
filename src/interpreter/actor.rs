@@ -1,10 +1,8 @@
+use core::panic;
+
 use super::ast::Process;
 
-#[derive(Clone)]
-pub struct ActorId {
-    id: String,
-}
-
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum ExtendedOption<T> {
     Zero,
     One(T),
@@ -33,10 +31,39 @@ impl<T> ExtendedOption<T> {
         }
     }
 
-    //TODO: implement unwrapper functions
+    pub fn unwrap_one(self) -> T {
+        match self {
+            ExtendedOption::Zero => panic!("Expecting a One, found a Zero"),
+            ExtendedOption::One(val) => val,
+            ExtendedOption::Two(_, _) => panic!("Expecting a One, found a Two"),
+        }
+    }
+
+    pub fn unwrap_two(self) -> (T, T) {
+        match self {
+            ExtendedOption::Zero => panic!("Expecting a Two, found a Zero"),
+            ExtendedOption::One(_) => panic!("Expecting a Two, found a One"),
+            ExtendedOption::Two(val1, val2) => (val1, val2),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ActorId {
+    id: String,
+}
+
+impl PartialEq for ActorId {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 impl ActorId {
+    pub fn as_str<'a>(&'a self) -> &'a str {
+        self.id.as_str()
+    }
+
     pub fn root(p: Process) -> ExtendedOption<ActorId> {
         match p {
             Process::Expr(_) => ExtendedOption::Zero,
@@ -100,9 +127,26 @@ impl ActorId {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use crate::interpreter::{
+        actor::ExtendedOption,
+        ast::{Expression, IntExpr, Process, Value},
+    };
+
+    use super::ActorId;
 
     #[test]
     fn test_relatives() {
-        //TODO
+        assert!(ActorId::root(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))).is_zero());
+        assert!(ActorId::root(Process::Expr(Expression::Val(Value::Str("".to_owned())))).is_zero());
+
+        assert_eq!(
+            ActorId::root(Process::ChanDeclaration(
+                "k".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
+            )),
+            ExtendedOption::One(ActorId { id: "c".to_owned() }),
+        );
     }
 }
