@@ -137,7 +137,7 @@ mod tests {
     use super::ActorId;
 
     #[test]
-    fn test_relatives() {
+    fn test_root() {
         assert!(ActorId::root(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))).is_zero());
         assert!(ActorId::root(Process::Expr(Expression::Val(Value::Str("".to_owned())))).is_zero());
 
@@ -147,6 +147,195 @@ mod tests {
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
             )),
             ExtendedOption::One(ActorId { id: "c".to_owned() }),
+        );
+
+        assert_eq!(
+            ActorId::root(Process::ChanDeclaration(
+                "p".to_owned(),
+                Box::new(Process::Par(
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
+                ))
+            )),
+            ExtendedOption::One(ActorId { id: "c".to_owned() }),
+        );
+
+        assert_eq!(
+            ActorId::root(Process::ChanDeclaration(
+                "k".to_owned(),
+                Box::new(Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
+                ))
+            )),
+            ExtendedOption::One(ActorId { id: "c".to_owned() }),
+        );
+
+        assert_eq!(
+            ActorId::root(Process::Par(
+                Box::new(Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
+                )),
+                Box::new(Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
+                ))
+            )),
+            ExtendedOption::Two(
+                ActorId { id: "a".to_owned() },
+                ActorId { id: "b".to_owned() }
+            )
+        );
+
+        assert_eq!(
+            ActorId::root(Process::Receive(
+                "w".to_owned(),
+                "s".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7))))
+            )),
+            ActorId::root(Process::ChanDeclaration(
+                "z".to_owned(),
+                Box::new(Process::Par(
+                    Box::new(Process::ChanDeclaration(
+                        "s".to_owned(),
+                        Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9))))
+                    )),
+                    Box::new(Process::ChanDeclaration(
+                        "s".to_owned(),
+                        Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(65))))
+                    ))
+                ))
+            ))
+        );
+
+        assert_ne!(
+            ActorId::root(Process::Receive(
+                "w".to_owned(),
+                "s".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7))))
+            )),
+            ActorId::root(Process::Send(
+                Expression::IntExpr(IntExpr::Lit(69)),
+                "y".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7))))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_relatives() {
+        let (a, b) = ActorId::root(Process::Par(
+            Box::new(Process::ChanDeclaration(
+                "s".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+            )),
+            Box::new(Process::ChanDeclaration(
+                "s".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(65)))),
+            )),
+        ))
+        .unwrap_two();
+
+        assert_eq!(
+            ActorId::from_parent(
+                &a,
+                Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+                ),
+            ),
+            ExtendedOption::One(ActorId {
+                id: "ac".to_owned()
+            })
+        );
+
+        assert_eq!(
+            ActorId::from_parent(
+                &b,
+                Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+                ),
+            ),
+            ExtendedOption::One(ActorId {
+                id: "bc".to_owned()
+            })
+        );
+
+        assert!(ActorId::from_parent(
+            &a,
+            Process::Loop(Box::new(Process::ChanDeclaration(
+                "s".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+            )))
+        )
+        .is_zero());
+
+        assert!(ActorId::from_parent(
+            &b,
+            Process::Loop(Box::new(Process::ChanDeclaration(
+                "s".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+            )))
+        )
+        .is_zero());
+
+        let r = ActorId::root(Process::Receive(
+            "val".to_owned(),
+            "b".to_owned(),
+            Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+        ))
+        .unwrap_one();
+        let r1 = ActorId::from_parent(
+            &r,
+            Process::Receive(
+                "v".to_owned(),
+                "w".to_owned(),
+                Box::new(Process::Expr(Expression::Val(Value::Char(57)))),
+            ),
+        )
+        .unwrap_one();
+
+        assert!(ActorId::from_parent(
+            &r1,
+            Process::Send(
+                Expression::IntExpr(IntExpr::Lit(69)),
+                "y".to_owned(),
+                Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
+            ),
+        )
+        .is_zero());
+
+        let (a, b) = ActorId::from_parent(
+            &r1,
+            Process::Par(
+                Box::new(Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+                )),
+                Box::new(Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(65)))),
+                )),
+            ),
+        )
+        .unwrap_two();
+
+        assert_eq!(
+            ActorId::from_parent(
+                &a,
+                Process::ChanDeclaration(
+                    "s".to_owned(),
+                    Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
+                ),
+            ),
+            ExtendedOption::One(ActorId {
+                id: "ccac".to_owned()
+            })
+        );
+        assert!(
+            ActorId::from_parent(&b, Process::Expr(Expression::IntExpr(IntExpr::Lit(2)))).is_zero()
         );
     }
 }
