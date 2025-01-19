@@ -59,6 +59,20 @@ impl PartialEq for ActorId {
     }
 }
 
+impl PartialOrd for ActorId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self == other {
+            Some(std::cmp::Ordering::Equal)
+        } else if self.id.starts_with(&other.id) {
+            Some(std::cmp::Ordering::Greater)
+        } else if other.id.starts_with(&self.id) {
+            Some(std::cmp::Ordering::Less)
+        } else {
+            None
+        }
+    }
+}
+
 impl ActorId {
     pub fn as_str<'a>(&'a self) -> &'a str {
         self.id.as_str()
@@ -108,20 +122,20 @@ impl ActorId {
         ActorId { id: raw }
     }
 
-    pub fn is_descendant_or_equal(&self, idb: &ActorId) -> bool {
-        self.id.starts_with(&idb.id)
+    pub fn is_descendant_or_equal(&self, other: &ActorId) -> bool {
+        self >= other
     }
 
-    pub fn is_ancestor_or_equal(&self, idb: &ActorId) -> bool {
-        idb.is_descendant_or_equal(self)
+    pub fn is_ancestor_or_equal(&self, other: &ActorId) -> bool {
+        self <= other
     }
 
-    pub fn is_descendant(&self, idb: &ActorId) -> bool {
-        self.id.starts_with(&idb.id) && self.id != idb.id
+    pub fn is_descendant(&self, other: &ActorId) -> bool {
+        self > other
     }
 
-    pub fn is_ancestor(&self, idb: &ActorId) -> bool {
-        idb.is_descendant(self)
+    pub fn is_ancestor(&self, other: &ActorId) -> bool {
+        self < other
     }
 }
 
