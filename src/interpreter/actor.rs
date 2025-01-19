@@ -352,4 +352,107 @@ mod tests {
             ActorId::from_parent(&b, Process::Expr(Expression::IntExpr(IntExpr::Lit(2)))).is_zero()
         );
     }
+
+    #[test]
+    fn test_ord() {
+        assert!(ActorId { id: "c".to_owned() } == ActorId { id: "c".to_owned() });
+        assert!(
+            ActorId {
+                id: "ca".to_owned()
+            } == ActorId {
+                id: "ca".to_owned()
+            }
+        );
+        assert!(
+            ActorId {
+                id: "ca".to_owned()
+            } != ActorId {
+                id: "cb".to_owned()
+            }
+        );
+        assert!(
+            !(ActorId {
+                id: "ca".to_owned()
+            } >= ActorId {
+                id: "cb".to_owned()
+            })
+        );
+        assert!(
+            !(ActorId {
+                id: "ca".to_owned()
+            } <= ActorId {
+                id: "cb".to_owned()
+            })
+        );
+        assert!(
+            ActorId {
+                id: "ccac".to_owned()
+            } <= ActorId {
+                id: "ccacb".to_owned()
+            }
+        );
+        assert!(
+            ActorId {
+                id: "ccac".to_owned()
+            } < ActorId {
+                id: "ccacb".to_owned()
+            }
+        );
+        assert!(
+            ActorId {
+                id: "cabc".to_owned()
+            } >= ActorId {
+                id: "ca".to_owned()
+            }
+        );
+        assert!(
+            ActorId {
+                id: "cabc".to_owned()
+            } > ActorId {
+                id: "ca".to_owned()
+            }
+        );
+        assert!(
+            !(ActorId {
+                id: "ccaccb".to_owned()
+            } >= ActorId {
+                id: "ccbccb".to_owned()
+            })
+        );
+        assert!(
+            !(ActorId {
+                id: "ccaccb".to_owned()
+            } <= ActorId {
+                id: "ccbccb".to_owned()
+            })
+        );
+        assert!(
+            !(ActorId {
+                id: "aaa".to_owned()
+            } <= ActorId {
+                id: "aab".to_owned()
+            })
+        );
+        assert!(
+            !(ActorId {
+                id: "aaa".to_owned()
+            } >= ActorId {
+                id: "aab".to_owned()
+            })
+        );
+        assert!(
+            ActorId {
+                id: "aa".to_owned()
+            } <= ActorId {
+                id: "aab".to_owned()
+            }
+        );
+        assert!(
+            ActorId {
+                id: "aa".to_owned()
+            } < ActorId {
+                id: "aab".to_owned()
+            }
+        );
+    }
 }
