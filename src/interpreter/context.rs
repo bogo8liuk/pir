@@ -15,125 +15,241 @@ pub fn valueOf(binding: NameBinding) -> Value {
     binding.1
 }
 
-pub type ActorId = String;
-
 /*
-               +---------+-------+
-               | name-id | value |
-               +---------+-------+
-                      \   /
-                       \ /
-                      +-V-+---+---+---+---+---+---+---+---+
-bindings              | * |   |   |   |   |   |   |   |   | ...
-(the effective stack) +---+---+---+---+---+---+---+---+---+
+
+                 +---------+-------+
+                 | name-id | value |
+ partial-ord-id  +---------+-------+
+      ^                 \   /
+      |                  \ /
+    +-|-+   +---+---+---+-V-+---+
+    | * |   |   |   |   | * |   | ...  ---------> stack
+    +---+   +---+---+---+---+---+
+    |   |   |   |   | ...  ---------------------> stack
+    +---+   +---+---+---+---+---+---+
+    |   |   |   |   |   |   |   |   | ...  -----> stack
+    +---+   +---+---+---+---+---+---+
+    |   |   |   |   |   |   | ...  -------------> stack
+    +---+   +---+---+---+---+
+     ...
 
 
-     actor-id             index
-         ^                  ^
-         |                  |
-       +-|-+  +---+---+---+-|-+---+---+---+---+
-scopes | * |  |   |   |   | * |   |   |   |   | ...
-       +---+  +---+---+---+---+---+---+---+---+
-       |   |  |   |   |   |   |   |   |   |   |
-       +---+  +---+---+---+---+---+---+---+---+
-       |   |  |   |   |   |   |   |   |   |   |
-       +---+  +---+---+---+---+---+---+---+---+
-       |   |  |   |   |   |   |   |   |   |   |
-       +---+  +---+---+---+---+---+---+---+---+
-           ...
-
-`bindings` are the real stack where variables are stored; two way of storing
-variables:
+We have a sequence of PartialOrd which keeps track of processes. Each id
+(PartialOrd) has an associated stack, where variables are stored; two way of
+storing variables:
   1) unboxed;
   2) boxed;
 
-`scopes` are a table to trace which variables the processes can see. The
-processes are represented by actor-ids (which don't necessarily correspond to
-process-ids). Each actor-id is associated with a set of indexes which are the
-ones that are visible in the stack to the actor.
+It must hold that, for each stored PartialOrd a,b, let i and j be their indexes
+in the sequence respectively, if i < j, then a is NOT greater than b (it could
+be ancestor or match exactly or nothing of them).
+
+Processes are just represented by PartialOrd, but it is not required that a
+single process (whatever it means, here there isn't the notion of it) is
+associated to a single PartialOrd.
 */
-pub struct NamesStack {
-    bindings: Vec<NameBinding>,
-    scopes: Vec<(ActorId, Vec<i32>)>,
+pub struct NamesStack<T /*: PartialOrd*/> {
+    bindings: Vec<(T, Vec<NameBinding>)>,
 }
 
-impl NamesStack {
+impl<T> NamesStack<T> {
     const DEFAULT_NAMES_CAPACITY: usize = 16;
-    const DEFAULT_SCOPES_CAPACITY: usize = 16;
 
     pub fn new() -> Self {
         NamesStack {
             bindings: Vec::with_capacity(Self::DEFAULT_NAMES_CAPACITY),
-            scopes: Vec::with_capacity(Self::DEFAULT_SCOPES_CAPACITY),
         }
     }
+}
 
-    pub fn push(&mut self, name_id: NameId, value: Value) {
-        self.bindings.push((name_id, value))
+impl<T: PartialOrd> NamesStack<T> {
+    pub fn push(&mut self, pid: T, name_id: NameId, value: Value) -> bool {
+        todo!()
     }
 
-    pub fn push_channel(&mut self, name_id: NameId) {
-        self.bindings.push((name_id, Value::Channel))
+    pub fn push_channel(&mut self, pid: T, name_id: NameId) -> bool {
+        todo!()
     }
 
     //TODO: add update op
 
-    pub fn pop(&mut self) -> Option<NameBinding> {
-        self.bindings.pop()
-    }
-
-    pub fn lookup(&self, name_id: NameId) -> Option<Value> {
-        self.bindings
-            .iter()
-            .rfind(|&(n, _)| *n == name_id)
-            .map(|(_, v)| v.clone())
+    pub fn lookup(&self, pid: T, name_id: NameId) -> Option<Value> {
+        todo!()
+        //self.bindings
+        //    .iter()
+        //    .rfind(|&(n, _)| *n == name_id)
+        //    .map(|(_, v)| v.clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::context::{NamesStack, Value};
+    use super::*;
 
     #[test]
-    fn test_push_pop() {
-        let mut stack = NamesStack::new();
+    fn test_push() {
+        let name_id1 = String::from("n1");
+        let name_id2 = String::from("n2");
+        let name_id3 = String::from("n3");
+        let name_id4 = String::from("n4");
+        let name_id5 = String::from("n5");
+        let v1 = Value::I32(42);
+        let v2 = Value::I32(43);
+        let v3 = Value::I32(7);
+        let pid1 = 100;
+        let pid2 = 200;
+        let pid3 = 300;
+        let pid4 = 50;
+        let pid5 = 150;
+        let pid6 = 250;
 
-        stack.push("key1".to_string(), Value::I32(10));
-        stack.push("key2".to_string(), Value::Channel);
+        let mut stack = NamesStack {
+            bindings: Vec::new(),
+        };
 
-        assert_eq!(stack.pop(), Some(("key2".to_string(), Value::Channel)));
-        assert_eq!(stack.pop(), Some(("key1".to_string(), Value::I32(10))));
-        assert_eq!(stack.pop(), None);
+        assert!(stack.push(pid1, name_id1.clone(), v1.clone()));
+        assert!(stack.push(pid1, name_id2.clone(), v2.clone()));
+
+        assert!(!stack.push(pid4, name_id1.clone(), v1.clone()));
+
+        assert_eq!(stack.bindings.len(), 1);
+        assert_eq!(stack.bindings[0].0, pid1);
+        assert_eq!(stack.bindings[0].1.len(), 2);
+
+        assert_eq!(stack.bindings[0].1[0].1, v1);
+        assert_eq!(stack.bindings[0].1[1].1, v2);
+        assert_eq!(stack.bindings[0].1[0].0, name_id1);
+        assert_eq!(stack.bindings[0].1[1].0, name_id2);
+
+        assert!(stack.push(pid2, name_id3.clone(), v1.clone()));
+
+        assert!(!stack.push(pid4, name_id1.clone(), v1.clone()));
+        assert!(!stack.push(pid5, name_id1.clone(), v1.clone()));
+
+        assert_eq!(stack.bindings.len(), 2);
+        assert_eq!(stack.bindings[0].1.len(), 2);
+        assert_eq!(stack.bindings[1].1[0].1, v1);
+        assert_eq!(stack.bindings[1].1[0].0, name_id3);
+
+        assert!(stack.push(pid3, name_id5.clone(), v1.clone()));
+        assert!(stack.push(pid1, name_id4.clone(), v1.clone()));
+        assert!(stack.push(pid3, name_id2.clone(), v3.clone()));
+        assert!(stack.push(pid3, name_id3.clone(), v3.clone()));
+
+        assert!(!stack.push(pid4, name_id1.clone(), v1.clone()));
+        assert!(!stack.push(pid5, name_id1.clone(), v1.clone()));
+        assert!(!stack.push(pid6, name_id1.clone(), v1.clone()));
+
+        assert_eq!(stack.bindings.len(), 3);
+        assert_eq!(stack.bindings[0].0, pid1);
+        assert_eq!(stack.bindings[1].0, pid2);
+        assert_eq!(stack.bindings[2].0, pid3);
+
+        assert_eq!(stack.bindings[0].1.len(), 3);
+        assert_eq!(stack.bindings[1].1.len(), 1);
+        assert_eq!(stack.bindings[2].1.len(), 3);
+
+        assert_eq!(stack.bindings[0].1[0].1, v1);
+        assert_eq!(stack.bindings[0].1[1].1, v2);
+        assert_eq!(stack.bindings[0].1[2].1, v1);
+        assert_eq!(stack.bindings[0].1[0].0, name_id1);
+        assert_eq!(stack.bindings[0].1[1].0, name_id2);
+        assert_eq!(stack.bindings[0].1[2].0, name_id4);
+
+        assert_eq!(stack.bindings[1].1[0].1, v1);
+        assert_eq!(stack.bindings[1].1[0].0, name_id3);
+
+        assert_eq!(stack.bindings[2].1[0].1, v1);
+        assert_eq!(stack.bindings[2].1[1].1, v3);
+        assert_eq!(stack.bindings[2].1[2].1, v3);
+        assert_eq!(stack.bindings[2].1[0].0, name_id5);
+        assert_eq!(stack.bindings[2].1[1].0, name_id2);
+        assert_eq!(stack.bindings[2].1[2].0, name_id3);
     }
 
     #[test]
     fn test_lookup() {
-        let mut stack = NamesStack::new();
-        stack.push("key1".to_string(), Value::I32(10));
-        stack.push("key2".to_string(), Value::Channel);
-        stack.push("key3".to_string(), Value::I32(30));
-        stack.push("key1".to_string(), Value::I32(40));
+        let name_id1 = String::from("n1");
+        let name_id2 = String::from("n2");
+        let name_id3 = String::from("n3");
+        let name_id4 = String::from("n4");
+        let name_id5 = String::from("n5");
+        let v1 = Value::I32(42);
+        let v2 = Value::I32(43);
+        let v3 = Value::I32(7);
+        let pid1 = 100;
+        let pid2 = 200;
+        let pid3 = 300;
+        let pid4 = 400;
+        let pid5 = 500;
+        let pid6 = 50;
+        let pid7 = 150;
 
-        assert_eq!(stack.lookup("key1".to_string()), Some(Value::I32(40)));
-        assert_eq!(stack.lookup("key2".to_string()), Some(Value::Channel));
-        assert_eq!(stack.lookup("key3".to_string()), Some(Value::I32(30)));
-        assert_eq!(stack.lookup("key4".to_string()), None);
+        let mut stack = NamesStack {
+            bindings: Vec::new(),
+        };
+
+        stack.push(pid1, name_id1.clone(), v1.clone());
+        stack.push(pid1, name_id2.clone(), v2.clone());
+
+        assert_eq!(stack.lookup(pid1, name_id1.clone()), Some(v1.clone()));
+        assert_eq!(stack.lookup(pid1, name_id3.clone()), None);
+        assert_eq!(stack.lookup(pid1, name_id2.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid2, name_id2.clone()), None);
+
+        stack.push(pid6, name_id1.clone(), v1.clone());
+
+        assert_eq!(stack.lookup(pid6, name_id1.clone()), None);
+
+        stack.push(pid2, name_id1.clone(), v2.clone());
+
+        assert_eq!(stack.lookup(pid1, name_id1.clone()), Some(v1.clone()));
+        assert_eq!(stack.lookup(pid2, name_id1.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid3, name_id1.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid4, name_id1.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid5, name_id1.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid6, name_id1.clone()), None);
+        assert_eq!(stack.lookup(pid7, name_id1.clone()), Some(v1.clone()));
+
+        stack.push(pid1, name_id3.clone(), v3.clone());
+        stack.push(pid4, name_id4.clone(), v2.clone());
+        stack.push(pid4, name_id2.clone(), v3.clone());
+
+        assert_eq!(stack.lookup(pid1, name_id3.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid2, name_id3.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid3, name_id3.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid4, name_id3.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid5, name_id3.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid6, name_id3.clone()), None);
+        assert_eq!(stack.lookup(pid7, name_id3.clone()), Some(v3.clone()));
+
+        assert_eq!(stack.lookup(pid1, name_id4.clone()), None);
+        assert_eq!(stack.lookup(pid2, name_id4.clone()), None);
+        assert_eq!(stack.lookup(pid3, name_id4.clone()), None);
+        assert_eq!(stack.lookup(pid4, name_id4.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid5, name_id4.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid6, name_id4.clone()), None);
+        assert_eq!(stack.lookup(pid7, name_id4.clone()), None);
+
+        assert_eq!(stack.lookup(pid1, name_id2.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid2, name_id2.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid3, name_id2.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid4, name_id2.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid5, name_id2.clone()), Some(v3.clone()));
+        assert_eq!(stack.lookup(pid6, name_id4.clone()), None);
+        assert_eq!(stack.lookup(pid7, name_id2.clone()), Some(v2.clone()));
+
+        assert_eq!(stack.lookup(pid1, name_id5.clone()), None);
+        assert_eq!(stack.lookup(pid2, name_id5.clone()), None);
+        assert_eq!(stack.lookup(pid3, name_id5.clone()), None);
+        assert_eq!(stack.lookup(pid4, name_id5.clone()), None);
+        assert_eq!(stack.lookup(pid5, name_id5.clone()), None);
+        assert_eq!(stack.lookup(pid6, name_id5.clone()), None);
+        assert_eq!(stack.lookup(pid7, name_id5.clone()), None);
     }
 
     #[test]
-    fn test_push_pop_lookup() {
-        let mut stack = NamesStack::new();
-
-        stack.push("key1".to_string(), Value::I32(10));
-        stack.push("key2".to_string(), Value::Channel);
-        stack.push("key3".to_string(), Value::I32(30));
-
-        assert_eq!(stack.lookup("key2".to_string()), Some(Value::Channel));
-        assert_eq!(stack.pop(), Some(("key3".to_string(), Value::I32(30))));
-        assert_eq!(stack.lookup("key2".to_string()), Some(Value::Channel));
-        assert_eq!(stack.pop(), Some(("key2".to_string(), Value::Channel)));
-        assert_eq!(stack.lookup("key1".to_string()), Some(Value::I32(10)));
-        assert_eq!(stack.pop(), Some(("key1".to_string(), Value::I32(10))));
-        assert_eq!(stack.pop(), None);
+    fn test_shadowing_single_pid() {
+        //TODO
     }
 }
