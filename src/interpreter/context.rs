@@ -63,8 +63,43 @@ impl<T> NamesStack<T> {
 }
 
 impl<T: PartialOrd> NamesStack<T> {
+    const DEFAULT_SUB_STACK_CAPACITY: usize = 4;
+
     pub fn push(&mut self, pid: T, name_id: NameId, value: Value) -> bool {
-        todo!()
+        // Little optimization in order to traverse the whole vector once at
+        // maximum. The alternative would be to check if any element is greater
+        // then the input pid with another traverse.
+        let mut any_greater = false;
+        match self.bindings.iter_mut().rev().find(|sub_stack| {
+            if sub_stack.0 > pid {
+                any_greater = true
+            }
+            sub_stack.0 == pid
+        }) {
+            Some(sub_stack) => {
+                // TODO: handle shadowing inside single stack
+                if sub_stack.1.iter().any(|binding| binding.0 == name_id) {
+                    false
+                } else {
+                    sub_stack.1.push((name_id, value));
+                    true
+                }
+            }
+            None => {
+                if any_greater {
+                    false
+                } else {
+                    let mut new_stack = Vec::with_capacity(Self::DEFAULT_SUB_STACK_CAPACITY);
+                    new_stack.push((name_id, value));
+                    self.bindings.push((pid, new_stack));
+                    true
+                }
+            }
+        }
+        //if self.bindings.iter().any(|sub_stack| sub_stack.0 > pid) {
+        //    false
+        //} else {
+        //}
     }
 
     pub fn push_channel(&mut self, pid: T, name_id: NameId) -> bool {
