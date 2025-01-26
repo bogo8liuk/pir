@@ -78,7 +78,7 @@ impl ActorId {
         self.id.as_str()
     }
 
-    pub fn root(p: Process) -> ExtendedOption<ActorId> {
+    pub fn root(p: &Process) -> ExtendedOption<ActorId> {
         match p {
             Process::Expr(_) => ExtendedOption::Zero,
             Process::Loop(_) => ExtendedOption::Zero,
@@ -92,7 +92,7 @@ impl ActorId {
         }
     }
 
-    pub fn from_parent(parent: &ActorId, p: Process) -> ExtendedOption<ActorId> {
+    pub fn from_parent(parent: &ActorId, p: &Process) -> ExtendedOption<ActorId> {
         match p {
             Process::Expr(_) => ExtendedOption::Zero,
             Process::Loop(_) => ExtendedOption::Zero,
@@ -152,11 +152,13 @@ mod tests {
 
     #[test]
     fn test_root() {
-        assert!(ActorId::root(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))).is_zero());
-        assert!(ActorId::root(Process::Expr(Expression::Val(Value::Str("".to_owned())))).is_zero());
+        assert!(ActorId::root(&Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))).is_zero());
+        assert!(
+            ActorId::root(&Process::Expr(Expression::Val(Value::Str("".to_owned())))).is_zero()
+        );
 
         assert_eq!(
-            ActorId::root(Process::ChanDeclaration(
+            ActorId::root(&Process::ChanDeclaration(
                 "k".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
             )),
@@ -164,7 +166,7 @@ mod tests {
         );
 
         assert_eq!(
-            ActorId::root(Process::ChanDeclaration(
+            ActorId::root(&Process::ChanDeclaration(
                 "p".to_owned(),
                 Box::new(Process::Par(
                     Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8)))),
@@ -175,7 +177,7 @@ mod tests {
         );
 
         assert_eq!(
-            ActorId::root(Process::ChanDeclaration(
+            ActorId::root(&Process::ChanDeclaration(
                 "k".to_owned(),
                 Box::new(Process::ChanDeclaration(
                     "s".to_owned(),
@@ -186,7 +188,7 @@ mod tests {
         );
 
         assert_eq!(
-            ActorId::root(Process::Par(
+            ActorId::root(&Process::Par(
                 Box::new(Process::ChanDeclaration(
                     "s".to_owned(),
                     Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(8))))
@@ -203,12 +205,12 @@ mod tests {
         );
 
         assert_eq!(
-            ActorId::root(Process::Receive(
+            ActorId::root(&Process::Receive(
                 "w".to_owned(),
                 "s".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7))))
             )),
-            ActorId::root(Process::ChanDeclaration(
+            ActorId::root(&Process::ChanDeclaration(
                 "z".to_owned(),
                 Box::new(Process::Par(
                     Box::new(Process::ChanDeclaration(
@@ -224,12 +226,12 @@ mod tests {
         );
 
         assert_ne!(
-            ActorId::root(Process::Receive(
+            ActorId::root(&Process::Receive(
                 "w".to_owned(),
                 "s".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7))))
             )),
-            ActorId::root(Process::Send(
+            ActorId::root(&Process::Send(
                 Expression::IntExpr(IntExpr::Lit(69)),
                 "y".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7))))
@@ -239,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_relatives() {
-        let (a, b) = ActorId::root(Process::Par(
+        let (a, b) = ActorId::root(&Process::Par(
             Box::new(Process::ChanDeclaration(
                 "s".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
@@ -254,7 +256,7 @@ mod tests {
         assert_eq!(
             ActorId::from_parent(
                 &a,
-                Process::ChanDeclaration(
+                &Process::ChanDeclaration(
                     "s".to_owned(),
                     Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
                 ),
@@ -267,7 +269,7 @@ mod tests {
         assert_eq!(
             ActorId::from_parent(
                 &b,
-                Process::ChanDeclaration(
+                &Process::ChanDeclaration(
                     "s".to_owned(),
                     Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
                 ),
@@ -279,7 +281,7 @@ mod tests {
 
         assert!(ActorId::from_parent(
             &a,
-            Process::Loop(Box::new(Process::ChanDeclaration(
+            &Process::Loop(Box::new(Process::ChanDeclaration(
                 "s".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
             )))
@@ -288,14 +290,14 @@ mod tests {
 
         assert!(ActorId::from_parent(
             &b,
-            Process::Loop(Box::new(Process::ChanDeclaration(
+            &Process::Loop(Box::new(Process::ChanDeclaration(
                 "s".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
             )))
         )
         .is_zero());
 
-        let r = ActorId::root(Process::Receive(
+        let r = ActorId::root(&Process::Receive(
             "val".to_owned(),
             "b".to_owned(),
             Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
@@ -303,7 +305,7 @@ mod tests {
         .unwrap_one();
         let r1 = ActorId::from_parent(
             &r,
-            Process::Receive(
+            &Process::Receive(
                 "v".to_owned(),
                 "w".to_owned(),
                 Box::new(Process::Expr(Expression::Val(Value::Char(57)))),
@@ -313,7 +315,7 @@ mod tests {
 
         assert!(ActorId::from_parent(
             &r1,
-            Process::Send(
+            &Process::Send(
                 Expression::IntExpr(IntExpr::Lit(69)),
                 "y".to_owned(),
                 Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
@@ -323,7 +325,7 @@ mod tests {
 
         let (a, b) = ActorId::from_parent(
             &r1,
-            Process::Par(
+            &Process::Par(
                 Box::new(Process::ChanDeclaration(
                     "s".to_owned(),
                     Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
@@ -339,7 +341,7 @@ mod tests {
         assert_eq!(
             ActorId::from_parent(
                 &a,
-                Process::ChanDeclaration(
+                &Process::ChanDeclaration(
                     "s".to_owned(),
                     Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(9)))),
                 ),
@@ -349,7 +351,8 @@ mod tests {
             })
         );
         assert!(
-            ActorId::from_parent(&b, Process::Expr(Expression::IntExpr(IntExpr::Lit(2)))).is_zero()
+            ActorId::from_parent(&b, &Process::Expr(Expression::IntExpr(IntExpr::Lit(2))))
+                .is_zero()
         );
     }
 

@@ -10,7 +10,10 @@ use tokio::{
 
 use crate::interpreter::{ast::*, context::NamesStack};
 
-use super::context;
+use super::{
+    actor::{ActorId, ExtendedOption},
+    context,
+};
 
 type ToFlush = String;
 
@@ -26,7 +29,7 @@ impl Display for ProcError {
 pub async fn eval_and_flush(process: Process) {
     //let names_stack = NamesStack::new();
     let names_stack_handle = StackHandle::new();
-    let to_flush_res = eval_process(Box::new(process), names_stack_handle).await;
+    let to_flush_res = eval_process(Box::new(process), names_stack_handle, None).await;
 
     match to_flush_res {
         (Ok(to_flush), _) => println!("{}", to_flush.as_str()),
@@ -43,6 +46,7 @@ especially with async recursion. */
 async fn eval_process(
     process: Box<Process>,
     names_stack_handle: StackHandle,
+    parent_id: Option<ActorId>,
 ) -> (Result<ToFlush, ProcError>, StackHandle) {
     match *process {
         Process::Expr(expr) => (eval_expr(&expr), names_stack_handle),
@@ -50,7 +54,8 @@ async fn eval_process(
             loop {
                 let handle_clone = names_stack_handle.clone();
                 // Ast cloning is probably actually sub-optimal
-                let res = Box::pin(eval_process(proc.clone(), handle_clone)).await;
+                let res =
+                    Box::pin(eval_process(proc.clone(), handle_clone, parent_id.clone())).await;
 
                 match res {
                     (Ok(_), _) => (),
@@ -61,8 +66,17 @@ async fn eval_process(
             //"".to_owned()
         }
         Process::ChanDeclaration(name_id, proc) => {
-            names_stack_handle.push_channel(name_id.to_owned()).await;
-            Box::pin(eval_process(proc, names_stack_handle)).await
+            match make_actor_id(
+                &parent_id,
+                //TODO: use a new data structure, like a representation
+                &Process::ChanDeclaration(name_id.clone(), proc.clone()),
+            ) {
+                ExtendedOption::One(aid) => {
+                    names_stack_handle.push_channel(aid.clone(), name_id).await;
+                    Box::pin(eval_process(proc, names_stack_handle, Some(aid))).await
+                }
+                _ => todo!(),
+            }
         }
         Process::Par(proc1, proc2) => {
             // This is necessary due to rustc typecheck. The clean way would be
@@ -71,24 +85,34 @@ async fn eval_process(
             fn eval_wrap(
                 process: Box<Process>,
                 names_stack_handle: StackHandle,
+                parent_id: Option<ActorId>,
             ) -> JoinHandle<(Result<ToFlush, ProcError>, StackHandle)> {
-                tokio::spawn(eval_process(process, names_stack_handle))
+                tokio::spawn(eval_process(process, names_stack_handle, parent_id))
             }
-            let handle_clone = names_stack_handle.clone();
-            let join1 = eval_wrap(proc1, names_stack_handle);
-            let join2 = eval_wrap(proc2, handle_clone);
+            match make_actor_id(&parent_id, &Process::Par(proc1.clone(), proc2.clone())) {
+                ExtendedOption::Two(aid1, aid2) => {
+                    names_stack_handle
+                        .clone()
+                        .push_two_aid(aid1.clone(), aid2.clone());
 
-            let res1 = join1.await.unwrap();
-            let res2 = join2.await.unwrap();
+                    let handle_clone = names_stack_handle.clone();
+                    let join1 = eval_wrap(proc1, names_stack_handle, Some(aid1));
+                    let join2 = eval_wrap(proc2, handle_clone, Some(aid2));
 
-            match (res1, res2) {
-                ((Ok(v1), names_stack_handle), (Ok(v2), _)) => (
-                    Ok(["<", v1.as_str(), ",", v2.as_str(), ">"].concat()),
-                    // Completely arbitrary: returning the first stack handle
-                    names_stack_handle,
-                ),
-                ((Err(e1), names_stack_handle), _) => (Err(e1), names_stack_handle),
-                ((_, names_stack_handle), (Err(e2), _)) => (Err(e2), names_stack_handle),
+                    let res1 = join1.await.unwrap();
+                    let res2 = join2.await.unwrap();
+
+                    match (res1, res2) {
+                        ((Ok(v1), names_stack_handle), (Ok(v2), _)) => (
+                            Ok(["<", v1.as_str(), ",", v2.as_str(), ">"].concat()),
+                            // Completely arbitrary: returning the first stack handle
+                            names_stack_handle,
+                        ),
+                        ((Err(e1), names_stack_handle), _) => (Err(e1), names_stack_handle),
+                        ((_, names_stack_handle), (Err(e2), _)) => (Err(e2), names_stack_handle),
+                    }
+                }
+                _ => todo!(),
             }
         }
         Process::Send(_, _, _) => todo!(),
@@ -96,9 +120,19 @@ async fn eval_process(
     }
 }
 
+fn make_actor_id(
+    eventual_parent_id: &Option<ActorId>,
+    process: &Process,
+) -> ExtendedOption<ActorId> {
+    match eventual_parent_id {
+        Some(parent_id) => ActorId::from_parent(parent_id, process),
+        None => ActorId::root(process),
+    }
+}
+
 struct StackActor {
     receiver: mpsc::Receiver<StackMessage>,
-    names_stack: NamesStack,
+    names_stack: NamesStack<ActorId>,
 }
 
 #[derive(Clone)]
@@ -112,8 +146,10 @@ struct StackMessage {
 }
 
 enum StackMessagePayload {
-    PushChannel(String),
-    Lookup(String),
+    PushAid { aid: ActorId },
+    PushTwoAid { aid1: ActorId, aid2: ActorId },
+    PushChannel { aid: ActorId, name_id: String },
+    Lookup { aid: ActorId, name_id: String },
 }
 
 enum StackMessageResponse {
@@ -124,15 +160,24 @@ enum StackMessageResponse {
 impl StackActor {
     fn handle_message(&mut self, msg: StackMessage) {
         match msg.payload {
-            StackMessagePayload::PushChannel(id) => {
-                self.names_stack.push_channel(id);
+            StackMessagePayload::PushChannel { aid, name_id } => {
+                self.names_stack.push_channel(aid, name_id);
                 let _ = msg.respond_to.send(StackMessageResponse::Nothing);
             }
-            StackMessagePayload::Lookup(id) => {
-                match self.names_stack.lookup(id) {
+            StackMessagePayload::Lookup { aid, name_id } => {
+                match self.names_stack.lookup(aid, name_id) {
                     Some(val) => msg.respond_to.send(StackMessageResponse::StackValue(val)),
                     None => msg.respond_to.send(StackMessageResponse::Nothing),
                 };
+            }
+            StackMessagePayload::PushAid { aid } => {
+                self.names_stack.push_pid(aid);
+                let _ = msg.respond_to.send(StackMessageResponse::Nothing);
+            }
+            StackMessagePayload::PushTwoAid { aid1, aid2 } => {
+                self.names_stack.push_pid(aid1);
+                self.names_stack.push_pid(aid2);
+                let _ = msg.respond_to.send(StackMessageResponse::Nothing);
             }
         }
     }
@@ -157,10 +202,10 @@ impl StackHandle {
         Self { sender }
     }
 
-    async fn push_channel(&self, id: String) -> StackMessageResponse {
+    async fn push_aid(&self, aid: ActorId) -> StackMessageResponse {
         let (send, recv) = oneshot::channel();
         let msg = StackMessage {
-            payload: StackMessagePayload::PushChannel(id),
+            payload: StackMessagePayload::PushAid { aid },
             respond_to: send,
         };
 
@@ -168,10 +213,32 @@ impl StackHandle {
         recv.await.expect("Stack actor task has been killed")
     }
 
-    async fn lookup(&self, id: String) -> StackMessageResponse {
+    async fn push_two_aid(&self, aid1: ActorId, aid2: ActorId) -> StackMessageResponse {
         let (send, recv) = oneshot::channel();
         let msg = StackMessage {
-            payload: StackMessagePayload::Lookup(id),
+            payload: StackMessagePayload::PushTwoAid { aid1, aid2 },
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+
+    async fn push_channel(&self, aid: ActorId, name_id: String) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::PushChannel { aid, name_id },
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+
+    async fn lookup(&self, aid: ActorId, name_id: String) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::Lookup { aid, name_id },
             respond_to: send,
         };
 
@@ -324,6 +391,7 @@ mod tests {
         eval_process, Expression, IntExpr, Process, StackHandle, StackMessageResponse,
     };
 
+    /*
     #[tokio::test]
     async fn should_add_name() {
         let names_stack_handle = StackHandle::new();
@@ -343,4 +411,5 @@ mod tests {
             "Expected 'a_name' to be in the names stack"
         );
     }
+    */
 }

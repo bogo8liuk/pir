@@ -65,6 +65,16 @@ impl<T> NamesStack<T> {
 impl<T: PartialOrd> NamesStack<T> {
     const DEFAULT_SUB_STACK_CAPACITY: usize = 4;
 
+    pub fn push_pid(&mut self, pid: T) -> bool {
+        if self.bindings.iter().any(|sub_stack| sub_stack.0 >= pid) {
+            false
+        } else {
+            let new_stack = Vec::with_capacity(Self::DEFAULT_SUB_STACK_CAPACITY);
+            self.bindings.push((pid, new_stack));
+            true
+        }
+    }
+
     pub fn push(&mut self, pid: T, name_id: NameId, value: Value) -> bool {
         // Little optimization in order to traverse the whole vector once at
         // maximum. The alternative would be to check if any element is greater
