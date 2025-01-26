@@ -403,11 +403,11 @@ fn eval_int_expr(expr: &IntExpr) -> ExprResult<i32> {
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::eval::{
-        eval_process, Expression, IntExpr, Process, StackHandle, StackMessageResponse,
+    use crate::interpreter::{
+        actor::ActorId,
+        eval::{eval_process, Expression, IntExpr, Process, StackHandle, StackMessageResponse},
     };
 
-    /*
     #[tokio::test]
     async fn should_add_name() {
         let names_stack_handle = StackHandle::new();
@@ -416,9 +416,11 @@ mod tests {
             Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
         );
 
-        let (_, names_stack_handle) = eval_process(Box::new(process), names_stack_handle).await;
+        let (_, names_stack_handle) =
+            eval_process(Box::new(process.clone()), names_stack_handle, None).await;
 
-        let has_stack_value = match names_stack_handle.lookup("a_name".to_owned()).await {
+        let aid = ActorId::root(&process).unwrap_one();
+        let has_stack_value = match names_stack_handle.lookup(aid, "a_name".to_owned()).await {
             StackMessageResponse::StackValue(_) => true,
             _ => false,
         };
@@ -427,5 +429,4 @@ mod tests {
             "Expected 'a_name' to be in the names stack"
         );
     }
-    */
 }
