@@ -133,7 +133,77 @@ impl<T: PartialOrd> NamesStack<T> {
 
 #[cfg(test)]
 mod tests {
+    use pest::prec_climber::Assoc;
+
     use super::*;
+
+    #[test]
+    fn test_push_pid() {
+        let pid1 = 100;
+        let pid2 = 200;
+        let pid3 = 300;
+        let pid4 = 50;
+        let pid5 = 150;
+        let pid6 = 250;
+
+        let mut stack = NamesStack::new();
+
+        assert!(stack.bindings.len() == 0);
+
+        assert!(stack.push_pid(pid1));
+
+        assert!(stack.bindings.len() == 1);
+        assert!(stack.bindings[0].0 == pid1);
+
+        assert!(!stack.push_pid(pid1));
+
+        assert!(stack.bindings.len() == 1);
+        assert!(stack.bindings[0].0 == pid1);
+
+        assert!(!stack.push_pid(pid4));
+
+        assert!(stack.bindings.len() == 1);
+        assert!(stack.bindings[0].0 == pid1);
+
+        assert!(stack.push_pid(pid6));
+
+        assert!(stack.bindings.len() == 2);
+        assert!(stack.bindings[0].0 == pid1);
+        assert!(stack.bindings[1].0 == pid6);
+
+        assert!(!stack.push_pid(pid4));
+        assert!(!stack.push_pid(pid5));
+        assert!(!stack.push_pid(pid2));
+
+        assert!(stack.bindings.len() == 2);
+        assert!(stack.bindings[0].0 == pid1);
+        assert!(stack.bindings[1].0 == pid6);
+
+        assert!(stack.push_pid(pid3));
+
+        assert!(stack.bindings.len() == 3);
+        assert!(stack.bindings[0].0 == pid1);
+        assert!(stack.bindings[1].0 == pid6);
+        assert!(stack.bindings[2].0 == pid3);
+
+        assert!(!stack.push_pid(pid3));
+        assert!(!stack.push_pid(pid1));
+
+        assert!(stack.bindings.len() == 3);
+        assert!(stack.bindings[0].0 == pid1);
+        assert!(stack.bindings[1].0 == pid6);
+        assert!(stack.bindings[2].0 == pid3);
+
+        assert!(!stack.push_pid(pid4));
+        assert!(!stack.push_pid(pid5));
+        assert!(!stack.push_pid(pid6));
+        assert!(!stack.push_pid(pid2));
+
+        assert!(stack.bindings.len() == 3);
+        assert!(stack.bindings[0].0 == pid1);
+        assert!(stack.bindings[1].0 == pid6);
+        assert!(stack.bindings[2].0 == pid3);
+    }
 
     #[test]
     fn test_push() {
