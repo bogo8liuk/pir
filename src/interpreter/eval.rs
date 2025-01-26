@@ -92,8 +92,8 @@ async fn eval_process(
             match make_actor_id(&parent_id, &Process::Par(proc1.clone(), proc2.clone())) {
                 ExtendedOption::Two(aid1, aid2) => {
                     names_stack_handle
-                        .clone()
-                        .push_two_aid(aid1.clone(), aid2.clone());
+                        .push_two_aid(aid1.clone(), aid2.clone())
+                        .await;
 
                     let handle_clone = names_stack_handle.clone();
                     let join1 = eval_wrap(proc1, names_stack_handle, Some(aid1));
@@ -165,7 +165,7 @@ impl StackActor {
                 let _ = msg.respond_to.send(StackMessageResponse::Nothing);
             }
             StackMessagePayload::Lookup { aid, name_id } => {
-                match self.names_stack.lookup(aid, name_id) {
+                let _ = match self.names_stack.lookup(aid, name_id) {
                     Some(val) => msg.respond_to.send(StackMessageResponse::StackValue(val)),
                     None => msg.respond_to.send(StackMessageResponse::Nothing),
                 };
