@@ -18,11 +18,27 @@ use super::{
 type ToFlush = String;
 
 #[derive(Debug)]
-struct ProcError;
+enum ProcError {
+    Generic,
+    ExpectingOneAid(ExtendedOption<ActorId>),
+    ExpectingTwoAid(ExtendedOption<ActorId>),
+}
 
 impl Display for ProcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "*** Process error ***")
+        match self {
+            ProcError::Generic => write!(f, "*** Process error ***"),
+            ProcError::ExpectingOneAid(e) => write!(
+                f,
+                "*** Unreachable code ***\nExpecting one aid, found {:#?}",
+                e
+            ),
+            ProcError::ExpectingTwoAid(e) => write!(
+                f,
+                "*** Unreachable code ***\nExpecting two aid, found {:#?}",
+                e
+            ),
+        }
     }
 }
 
@@ -75,7 +91,7 @@ async fn eval_process(
                     names_stack_handle.push_channel(aid.clone(), name_id).await;
                     Box::pin(eval_process(proc, names_stack_handle, Some(aid))).await
                 }
-                _ => todo!(),
+                e => (Err(ProcError::ExpectingOneAid(e)), names_stack_handle),
             }
         }
         Process::Par(proc1, proc2) => {
@@ -112,7 +128,7 @@ async fn eval_process(
                         ((_, names_stack_handle), (Err(e2), _)) => (Err(e2), names_stack_handle),
                     }
                 }
-                _ => todo!(),
+                e => (Err(ProcError::ExpectingTwoAid(e)), names_stack_handle),
             }
         }
         Process::Send(_, _, _) => todo!(),
