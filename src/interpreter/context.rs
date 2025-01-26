@@ -99,7 +99,7 @@ impl<T: PartialOrd> NamesStack<T> {
     }
 
     pub fn push_channel(&mut self, pid: T, name_id: NameId) -> bool {
-        todo!()
+        self.push(pid, name_id, Value::Channel)
     }
 
     //TODO: add update op
