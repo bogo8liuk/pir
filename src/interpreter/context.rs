@@ -96,10 +96,6 @@ impl<T: PartialOrd> NamesStack<T> {
                 }
             }
         }
-        //if self.bindings.iter().any(|sub_stack| sub_stack.0 > pid) {
-        //    false
-        //} else {
-        //}
     }
 
     pub fn push_channel(&mut self, pid: T, name_id: NameId) -> bool {
@@ -109,11 +105,19 @@ impl<T: PartialOrd> NamesStack<T> {
     //TODO: add update op
 
     pub fn lookup(&self, pid: T, name_id: NameId) -> Option<Value> {
-        todo!()
-        //self.bindings
-        //    .iter()
-        //    .rfind(|&(n, _)| *n == name_id)
-        //    .map(|(_, v)| v.clone())
+        let mut iter = self.bindings.iter().rev();
+        loop {
+            // Searching in the pid vector for the pid firstly, mutating the iterator
+            match iter.find(|sub_stack| sub_stack.0 <= pid) {
+                // Then searching in the stack for the binding
+                Some(sub_stack) => match sub_stack.1.iter().find(|binding| binding.0 == name_id) {
+                    // This clone should be light-weight
+                    Some(binding) => return Some(binding.1.clone()),
+                    None => (), // do nothing, continue to search
+                },
+                None => return None,
+            }
+        }
     }
 }
 
@@ -230,7 +234,8 @@ mod tests {
         assert_eq!(stack.lookup(pid1, name_id1.clone()), Some(v1.clone()));
         assert_eq!(stack.lookup(pid1, name_id3.clone()), None);
         assert_eq!(stack.lookup(pid1, name_id2.clone()), Some(v2.clone()));
-        assert_eq!(stack.lookup(pid2, name_id2.clone()), None);
+        assert_eq!(stack.lookup(pid2, name_id2.clone()), Some(v2.clone()));
+        assert_eq!(stack.lookup(pid6, name_id1.clone()), None);
 
         stack.push(pid6, name_id1.clone(), v1.clone());
 
