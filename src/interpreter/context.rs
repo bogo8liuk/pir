@@ -1,10 +1,49 @@
+use std::ops::Deref;
+
+use tokio::sync::broadcast;
+
 pub type NameId = String;
 // NB: if you add cases to this type, remember to box everything is large
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     I32(i32),
-    Channel,
+    Channel(Box<broadcast::Sender<Value>>),
 }
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::I32(n1), Value::I32(n2)) => n1 == n2,
+            (Value::I32(_), Value::Channel(_)) => false,
+            (Value::Channel(_), Value::I32(_)) => false,
+            (Value::Channel(_), Value::Channel(_)) => false,
+        }
+    }
+}
+
+impl Value {
+    pub fn is_channel(&self) -> bool {
+        match self {
+            Value::Channel(_) => true,
+            _ => false,
+        }
+    }
+}
+
+/*
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        match self {
+            Value::I32(n) => Value::I32(*n),
+            Value::Channel(boxed_sender_receiver) => {
+                let sender = boxed_sender_receiver.deref();
+                Value::Channel(Box::new(sender.clone()))
+            }
+        }
+    }
+}
+    */
+
 pub type NameBinding = (NameId, Value);
 
 pub fn nameIdOf(binding: NameBinding) -> NameId {
@@ -109,18 +148,32 @@ impl<T: PartialOrd> NamesStack<T> {
     }
 
     pub fn push_channel(&mut self, pid: T, name_id: NameId) -> bool {
-        self.push(pid, name_id, Value::Channel)
+        let (sender, _) = broadcast::channel(16); //TODO: remove hardcoding
+        self.push(pid, name_id, Value::Channel(Box::new(sender)))
     }
 
     //TODO: add update op
 
     pub fn lookup(&self, pid: T, name_id: NameId) -> Option<Value> {
+        self.lookup_with(pid, &|binding| binding.0 == name_id)
+    }
+
+    pub fn lookup_channel(&self, pid: T, name_id: NameId) -> Option<Value> {
+        self.lookup_with(pid, &|binding| {
+            binding.0 == name_id && binding.1.is_channel()
+        })
+    }
+
+    fn lookup_with<F>(&self, pid: T, byPredicate: &F) -> Option<Value>
+    where
+        F: Fn(&&(NameId, Value)) -> bool,
+    {
         let mut iter = self.bindings.iter().rev();
         loop {
             // Searching in the pid vector for the pid firstly, mutating the iterator
             match iter.find(|sub_stack| sub_stack.0 <= pid) {
                 // Then searching in the stack for the binding
-                Some(sub_stack) => match sub_stack.1.iter().find(|binding| binding.0 == name_id) {
+                Some(sub_stack) => match sub_stack.1.iter().find(byPredicate) {
                     // This clone should be light-weight
                     Some(binding) => return Some(binding.1.clone()),
                     None => (), // do nothing, continue to search
