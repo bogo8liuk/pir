@@ -12,7 +12,7 @@ use crate::interpreter::{ast::*, context::NamesStack};
 
 use super::{
     actor::{ActorId, ExtendedOption},
-    context,
+    context::{self, ChannelData, NameId},
 };
 
 type ToFlush = String;
@@ -22,22 +22,24 @@ enum ProcError {
     Generic,
     ExpectingOneAid(ExtendedOption<ActorId>),
     ExpectingTwoAid(ExtendedOption<ActorId>),
+    NameIdNotFound(NameId),
 }
 
 impl Display for ProcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProcError::Generic => write!(f, "*** Process error ***"),
-            ProcError::ExpectingOneAid(e) => write!(
+            ProcError::Generic => writeln!(f, "*** Process error ***"),
+            ProcError::ExpectingOneAid(e) => writeln!(
                 f,
                 "*** Unreachable code ***\nExpecting one aid, found {:#?}",
                 e
             ),
-            ProcError::ExpectingTwoAid(e) => write!(
+            ProcError::ExpectingTwoAid(e) => writeln!(
                 f,
                 "*** Unreachable code ***\nExpecting two aid, found {:#?}",
                 e
             ),
+            ProcError::NameIdNotFound(name_id) => writeln!(f, "Name id <{}> not found", name_id),
         }
     }
 }
@@ -82,11 +84,12 @@ async fn eval_process(
             //"".to_owned()
         }
         Process::ChanDeclaration(name_id, proc) => {
-            match make_actor_id(
+            let actor_id_res = make_actor_id(
                 &parent_id,
                 //TODO: use a new data structure, like a representation
                 &Process::ChanDeclaration(name_id.clone(), proc.clone()),
-            ) {
+            );
+            match actor_id_res {
                 ExtendedOption::One(aid) => {
                     names_stack_handle.push_channel(aid.clone(), name_id).await;
                     Box::pin(eval_process(proc, names_stack_handle, Some(aid))).await
@@ -131,7 +134,39 @@ async fn eval_process(
                 e => (Err(ProcError::ExpectingTwoAid(e)), names_stack_handle),
             }
         }
-        Process::Send(_, _, _) => todo!(),
+        Process::Send(expr, name_id, continuation) => {
+            let parent_id_clone = parent_id.clone();
+            // If there is no parent id, then no declaration for anything
+            // has been done, so the name_id cannot be found
+            if parent_id_clone.is_none() {
+                return (Err(ProcError::NameIdNotFound(name_id)), names_stack_handle);
+            }
+
+            let aid = parent_id_clone.unwrap();
+
+            let expr_res = eval_expr(&expr);
+            match expr_res {
+                Ok(val) => {
+                    let send_trial = names_stack_handle
+                        .lookup_channel(aid, name_id.clone())
+                        .await
+                        .and_with_channel(
+                            |sender| {
+                                let _ = sender.send(context::Value::I32(42) /*val*/);
+                            },
+                            ProcError::NameIdNotFound(name_id),
+                        );
+                    match send_trial {
+                        Ok(_) => {
+                            Box::pin(eval_process(continuation, names_stack_handle, parent_id))
+                                .await
+                        }
+                        Err(proc_err) => (Err(proc_err), names_stack_handle),
+                    }
+                }
+                Err(_) => (expr_res, names_stack_handle),
+            }
+        }
         Process::Receive(_, _, _) => todo!(),
     }
 }
@@ -166,11 +201,27 @@ enum StackMessagePayload {
     PushTwoAid { aid1: ActorId, aid2: ActorId },
     PushChannel { aid: ActorId, name_id: String },
     Lookup { aid: ActorId, name_id: String },
+    LookupChannel { aid: ActorId, name_id: String },
 }
 
 enum StackMessageResponse {
     Nothing,
     StackValue(context::Value),
+    // This is just a shortcut for StackValue with unwrapped channel
+    StackChannel(context::ChannelData),
+}
+
+impl StackMessageResponse {
+    fn and_with_channel<F, E, U>(self, continuation: F, default: E) -> Result<U, E>
+    where
+        F: FnOnce(ChannelData) -> U,
+    {
+        match self {
+            StackMessageResponse::Nothing => Err(default),
+            StackMessageResponse::StackValue(_) => Err(default),
+            StackMessageResponse::StackChannel(sender) => Ok(continuation(sender)),
+        }
+    }
 }
 
 impl StackActor {
@@ -194,6 +245,15 @@ impl StackActor {
                 self.names_stack.push_pid(aid1);
                 self.names_stack.push_pid(aid2);
                 let _ = msg.respond_to.send(StackMessageResponse::Nothing);
+            }
+            StackMessagePayload::LookupChannel { aid, name_id } => {
+                let _ = match self.names_stack.lookup_channel(aid, name_id) {
+                    Some(context::Value::Channel(data)) => msg
+                        .respond_to
+                        .send(StackMessageResponse::StackChannel(data)),
+                    Some(_) => msg.respond_to.send(StackMessageResponse::Nothing),
+                    None => msg.respond_to.send(StackMessageResponse::Nothing),
+                };
             }
         }
     }
@@ -255,6 +315,17 @@ impl StackHandle {
         let (send, recv) = oneshot::channel();
         let msg = StackMessage {
             payload: StackMessagePayload::Lookup { aid, name_id },
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+
+    async fn lookup_channel(&self, aid: ActorId, name_id: String) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::LookupChannel { aid, name_id },
             respond_to: send,
         };
 
@@ -403,10 +474,25 @@ fn eval_int_expr(expr: &IntExpr) -> ExprResult<i32> {
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync::{
+        broadcast,
+        mpsc::{self},
+    };
+
     use crate::interpreter::{
         actor::ActorId,
         eval::{eval_process, Expression, IntExpr, Process, StackHandle, StackMessageResponse},
     };
+
+    #[tokio::test]
+    async fn test_tokio_message_passing() {
+        let (sender, receiver): (mpsc::Sender<String>, mpsc::Receiver<String>) = mpsc::channel(4);
+        let (sender1, receiver1): (broadcast::Sender<String>, broadcast::Receiver<String>) =
+            broadcast::channel(4);
+
+        //sender.subscribe();  //This cannot create new receiver
+        sender1.subscribe(); //This create a new receiver
+    }
 
     #[tokio::test]
     async fn should_add_name() {

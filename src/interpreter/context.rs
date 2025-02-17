@@ -3,11 +3,12 @@ use std::ops::Deref;
 use tokio::sync::broadcast;
 
 pub type NameId = String;
+pub type ChannelData = Box<broadcast::Sender<Value>>;
 // NB: if you add cases to this type, remember to box everything is large
 #[derive(Debug, Clone)]
 pub enum Value {
     I32(i32),
-    Channel(Box<broadcast::Sender<Value>>),
+    Channel(ChannelData),
 }
 
 impl PartialEq for Value {
@@ -164,7 +165,7 @@ impl<T: PartialOrd> NamesStack<T> {
         })
     }
 
-    fn lookup_with<F>(&self, pid: T, byPredicate: &F) -> Option<Value>
+    fn lookup_with<F>(&self, pid: T, by_predicate: &F) -> Option<Value>
     where
         F: Fn(&&(NameId, Value)) -> bool,
     {
@@ -173,7 +174,7 @@ impl<T: PartialOrd> NamesStack<T> {
             // Searching in the pid vector for the pid firstly, mutating the iterator
             match iter.find(|sub_stack| sub_stack.0 <= pid) {
                 // Then searching in the stack for the binding
-                Some(sub_stack) => match sub_stack.1.iter().find(byPredicate) {
+                Some(sub_stack) => match sub_stack.1.iter().find(by_predicate) {
                     // This clone should be light-weight
                     Some(binding) => return Some(binding.1.clone()),
                     None => (), // do nothing, continue to search
