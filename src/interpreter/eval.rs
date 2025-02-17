@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     fmt::Display,
     ops::{Add, Div, Mul, Neg, Rem, Sub},
 };
@@ -66,7 +67,8 @@ async fn eval_process(
     names_stack_handle: StackHandle,
     parent_id: Option<ActorId>,
 ) -> (Result<ToFlush, ProcError>, StackHandle) {
-    match *process {
+    let proc_ref: &Process = Box::borrow(&process);
+    match *proc_ref {
         Process::Expr(expr) => (eval_expr(&expr), names_stack_handle),
         Process::Loop(proc) => {
             loop {
@@ -87,7 +89,8 @@ async fn eval_process(
             let actor_id_res = make_actor_id(
                 &parent_id,
                 //TODO: use a new data structure, like a representation
-                &Process::ChanDeclaration(name_id.clone(), proc.clone()),
+                //&Process::ChanDeclaration(name_id.clone(), proc.clone()),
+                &process,
             );
             match actor_id_res {
                 ExtendedOption::One(aid) => {
@@ -108,7 +111,7 @@ async fn eval_process(
             ) -> JoinHandle<(Result<ToFlush, ProcError>, StackHandle)> {
                 tokio::spawn(eval_process(process, names_stack_handle, parent_id))
             }
-            match make_actor_id(&parent_id, &Process::Par(proc1.clone(), proc2.clone())) {
+            match make_actor_id(&parent_id, &process) {
                 ExtendedOption::Two(aid1, aid2) => {
                     names_stack_handle
                         .push_two_aid(aid1.clone(), aid2.clone())
@@ -167,7 +170,21 @@ async fn eval_process(
                 Err(_) => (expr_res, names_stack_handle),
             }
         }
-        Process::Receive(_, _, _) => todo!(),
+        Process::Receive(var_id, name_id, continuation) => {
+            let parent_id_clone = parent_id.clone();
+            // If there is no parent id, then no declaration for anything
+            // has been done, so the name_id cannot be found
+            if parent_id_clone.is_none() {
+                return (Err(ProcError::NameIdNotFound(name_id)), names_stack_handle);
+            }
+            let actor_id_res = make_actor_id(
+                &parent_id, //TODO: use a new data structure, like a representation
+                &process,
+            );
+
+            todo!()
+            //match actor_id_res {}
+        }
     }
 }
 
