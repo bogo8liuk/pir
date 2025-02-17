@@ -126,7 +126,7 @@ async fn eval_process(
                             names_stack_handle,
                         ),
                         ((Err(e1), names_stack_handle), _) => (Err(e1), names_stack_handle),
-                        ((_, names_stack_handle), (Err(e2), _)) => (Err(e2), names_stack_handle),
+                        (_, (Err(e2), names_stack_handle)) => (Err(e2), names_stack_handle),
                     }
                 }
                 e => (Err(ProcError::ExpectingTwoAid(e)), names_stack_handle),
