@@ -86,12 +86,7 @@ async fn eval_process(
             //"".to_owned()
         }
         Process::ChanDeclaration(name_id, proc) => {
-            let actor_id_res = make_actor_id(
-                &parent_id,
-                //TODO: use a new data structure, like a representation
-                //&Process::ChanDeclaration(name_id.clone(), proc.clone()),
-                &process,
-            );
+            let actor_id_res = make_actor_id(&parent_id, &process);
             match actor_id_res {
                 ExtendedOption::One(aid) => {
                     names_stack_handle.push_channel(aid.clone(), name_id).await;
@@ -177,10 +172,7 @@ async fn eval_process(
             if parent_id_clone.is_none() {
                 return (Err(ProcError::NameIdNotFound(name_id)), names_stack_handle);
             }
-            let actor_id_res = make_actor_id(
-                &parent_id, //TODO: use a new data structure, like a representation
-                &process,
-            );
+            let actor_id_res = make_actor_id(&parent_id, &process);
 
             todo!()
             //match actor_id_res {}
