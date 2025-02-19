@@ -118,7 +118,7 @@ impl<T: PartialOrd> NamesStack<T> {
     pub fn push(&mut self, pid: T, name_id: NameId, value: Value) -> bool {
         // Little optimization in order to traverse the whole vector once at
         // maximum. The alternative would be to check if any element is greater
-        // then the input pid with another traverse.
+        // than the input pid with another traverse.
         let mut any_greater = false;
         match self.bindings.iter_mut().rev().find(|sub_stack| {
             if sub_stack.0 > pid {
