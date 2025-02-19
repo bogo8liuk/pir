@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{fmt::Display, ops::Deref};
 
 use tokio::sync::broadcast;
 
@@ -9,6 +9,15 @@ pub type ChannelData = Box<broadcast::Sender<Value>>;
 pub enum Value {
     I32(i32),
     Channel(ChannelData),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::I32(n) => write!(f, "{}", n),
+            Value::Channel(_) => write!(f, "@"),
+        }
+    }
 }
 
 impl PartialEq for Value {
@@ -102,6 +111,30 @@ impl<T> NamesStack<T> {
     }
 }
 
+impl<T: ToString> NamesStack<T> {
+    pub fn draw(&self) -> String {
+        self.bindings
+            .iter()
+            .map(|binding| {
+                let head = ["[", binding.0.to_string().as_str(), "] ---> "].concat();
+                let sub_stack = binding.1.iter().fold("|".to_owned(), |acc, pair| {
+                    [
+                        acc.as_str(),
+                        " <",
+                        pair.0.as_str(),
+                        ",",
+                        pair.1.to_string().as_str(),
+                        "> |",
+                    ]
+                    .concat()
+                });
+
+                [head, sub_stack, "\n".to_owned()].concat()
+            })
+            .collect()
+    }
+}
+
 impl<T: PartialOrd> NamesStack<T> {
     const DEFAULT_SUB_STACK_CAPACITY: usize = 4;
 
@@ -187,6 +220,7 @@ impl<T: PartialOrd> NamesStack<T> {
 
 #[cfg(test)]
 mod tests {
+    use broadcast::Sender;
     use pest::prec_climber::Assoc;
 
     use super::*;
@@ -425,5 +459,59 @@ mod tests {
     #[test]
     fn test_shadowing_single_pid() {
         //TODO
+    }
+
+    #[test]
+    fn draw_stack_trace() {
+        let mut stack = NamesStack::new();
+
+        let name_id1 = String::from("n1");
+        let name_id2 = String::from("n2");
+        let name_id3 = String::from("n3");
+        let name_id4 = String::from("n4");
+        let name_id5 = String::from("n5");
+        let v1 = Value::I32(42);
+        let v2 = Value::I32(43);
+        let v3 = Value::I32(7);
+        let v4 = Value::Channel(Box::new(Sender::new(4)));
+        let v5 = Value::Channel(Box::new(Sender::new(5)));
+        let pid1 = 100;
+        let pid2 = 200;
+        let pid3 = 300;
+
+        let mut drawing = stack.draw();
+        println!("{}", drawing);
+
+        stack.push(pid1, name_id1.clone(), v1.clone());
+
+        drawing = stack.draw();
+        println!("{}", drawing);
+
+        stack.push(pid2, name_id1.clone(), v2.clone());
+        stack.push(pid3, name_id1.clone(), v3.clone());
+
+        drawing = stack.draw();
+        println!("{}", drawing);
+
+        stack.push(pid1, name_id2.clone(), v3.clone());
+        stack.push(pid2, name_id2.clone(), v4.clone());
+
+        drawing = stack.draw();
+        println!("{}", drawing);
+
+        stack.push(pid1, name_id3.clone(), v4.clone());
+        stack.push(pid2, name_id3.clone(), v5.clone());
+
+        drawing = stack.draw();
+        println!("{}", drawing);
+
+        stack.push(pid3, name_id1.clone(), v3.clone());
+        stack.push(pid3, name_id2.clone(), v4.clone());
+        stack.push(pid3, name_id3.clone(), v2.clone());
+        stack.push(pid3, name_id4.clone(), v5.clone());
+        stack.push(pid3, name_id5.clone(), v4.clone());
+
+        drawing = stack.draw();
+        println!("{}", drawing);
     }
 }
