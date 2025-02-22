@@ -1,4 +1,5 @@
 use core::panic;
+use std::fmt::Display;
 
 use super::ast::Process;
 
@@ -51,6 +52,12 @@ impl<T> ExtendedOption<T> {
 #[derive(Clone, Debug)]
 pub struct ActorId {
     id: String,
+}
+
+impl Display for ActorId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", self.id)
+    }
 }
 
 impl PartialEq for ActorId {
