@@ -390,12 +390,12 @@ fn make_char_literal(pairs: Pairs<Rule>) -> Result<ast::Value, CharParseError> {
     match chars.next() {
         // Performing look-ahead after escaping character \
         Some('\\') => match chars.next() {
-            Some('\\') => Ok(ast::Value::Char('\\'.into())),
-            Some('\'') => Ok(ast::Value::Char('\''.into())),
-            Some('n') => Ok(ast::Value::Char('\n'.into())),
-            Some('t') => Ok(ast::Value::Char('\t'.into())),
-            Some('r') => Ok(ast::Value::Char('\r'.into())),
-            Some('b') => Ok(ast::Value::Char('\x08'.into())),
+            Some('\\') => Ok(ast::Value::Char('\\')),
+            Some('\'') => Ok(ast::Value::Char('\'')),
+            Some('n') => Ok(ast::Value::Char('\n')),
+            Some('t') => Ok(ast::Value::Char('\t')),
+            Some('r') => Ok(ast::Value::Char('\r')),
+            Some('b') => Ok(ast::Value::Char('\x08')),
             /* This is the character \ followed by none of the above (\, n, t, etc.).
             It should be already avoided by the grammar. */
             Some(c) => unreachable!(
@@ -405,7 +405,7 @@ fn make_char_literal(pairs: Pairs<Rule>) -> Result<ast::Value, CharParseError> {
             /* This is the following case: '\'. The grammar should avoid it. */
             None => unreachable!("Unreachable code: no characters after escaping character \\ in character literal"),
         },
-        Some(char) => Ok(ast::Value::Char(char.into())),
+        Some(char) => Ok(ast::Value::Char(char)),
         /* This case should be unreachable, since the parser should perform the
         check before. */
         None => Err(CharParseError::Empty),
@@ -449,112 +449,112 @@ mod tests {
         assert_eq!(
             parse("'c'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'c' as u32,
+                'c',
             ))))
         );
 
         assert_eq!(
             parse("'0'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '0' as u32,
+                '0',
             ))))
         );
 
         assert_eq!(
             parse("'Z'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'Z' as u32,
+                'Z',
             ))))
         );
 
         assert_eq!(
             parse("' '"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                ' ' as u32,
+                ' ',
             ))))
         );
 
         assert_eq!(
             parse("'$'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '$' as u32,
+                '$',
             ))))
         );
 
         assert_eq!(
             parse("'Γ'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'Γ' as u32,
+                'Γ',
             ))))
         );
 
         assert_eq!(
             parse("'·'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '·' as u32,
+                '·',
             ))))
         );
 
         assert_eq!(
             parse("'é'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'é' as u32,
+                'é',
             ))))
         );
 
         assert_eq!(
             parse("'ट'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'ट' as u32,
+                'ट',
             ))))
         );
 
         assert_eq!(
             parse("'あ'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'あ' as u32,
+                'あ',
             ))))
         );
 
         assert_eq!(
             parse("'€'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '€' as u32,
+                '€',
             ))))
         );
 
         assert_eq!(
             parse("'漢'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '漢' as u32,
+                '漢',
             ))))
         );
 
         assert_eq!(
             parse("'Д'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'Д' as u32,
+                'Д',
             ))))
         );
 
         assert_eq!(
             parse("'\\n'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '\n' as u32,
+                '\n',
             ))))
         );
 
         assert_eq!(
             parse("'\\t'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                '\t' as u32,
+                '\t',
             ))))
         );
 
         assert_eq!(
             parse("'Ճ'"),
             Ok(ast::Process::Expr(ast::Expression::Val(ast::Value::Char(
-                'Ճ' as u32,
+                'Ճ',
             ))))
         );
     }
@@ -1220,9 +1220,7 @@ mod tests {
         assert_eq!(
             parse("('F' | 7)"),
             Ok(Process::Par(
-                Box::new(Process::Expr(ast::Expression::Val(ast::Value::Char(
-                    'F' as u32
-                )))),
+                Box::new(Process::Expr(ast::Expression::Val(ast::Value::Char('F')))),
                 Box::new(Process::Expr(ast::Expression::IntExpr(IntExpr::Lit(7))))
             ))
         );
@@ -1328,7 +1326,7 @@ mod tests {
                 "myvar".to_owned(),
                 "internet".to_owned(),
                 Box::new(Process::Loop(Box::new(Process::Expr(Expression::Val(
-                    ast::Value::Char('@' as u32)
+                    ast::Value::Char('@')
                 )))))
             ))
         );
@@ -1339,7 +1337,7 @@ mod tests {
                 "myvar".to_owned(),
                 "internet".to_owned(),
                 Box::new(Process::Loop(Box::new(Process::Expr(Expression::Val(
-                    ast::Value::Char('@' as u32)
+                    ast::Value::Char('@')
                 )))))
             ))
         );
