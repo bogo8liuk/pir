@@ -56,7 +56,7 @@ pub struct ActorId {
 
 impl Display for ActorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", self.id)
+        write!(f, "{}", self.id)
     }
 }
 
