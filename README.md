@@ -11,6 +11,7 @@ This is a (probably non-complete) list of todos:
 - [ ] better errors, especially on parsing (if possible write unit tests on them)
 - [ ] adding more data types: characters, strings, floating point numbers, etc.
 - [ ] adding expressions with identifiers
+- [ ] implement a repl
 - [ ] adding concepts of lambda-calculus, in particular functions, but here I
 need some extra theory
 - [ ] benchmarks: need a way to track tasks and stop them when they are all done
