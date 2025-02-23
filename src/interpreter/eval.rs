@@ -1,7 +1,7 @@
 use std::{
-    borrow::Borrow,
     fmt::Display,
     ops::{Add, Div, Mul, Neg, Rem, Sub},
+    time::Duration,
 };
 
 use tokio::{
@@ -9,7 +9,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::interpreter::{ast::*, context::NamesStack};
+use crate::interpreter::{ast::*, context::NamesStack, context::Value as ContextValue};
 
 use super::{
     actor::{ActorId, ExtendedOption},
@@ -17,6 +17,7 @@ use super::{
 };
 
 type ToFlush = String;
+type EvalResult = (Result<ToFlush, ProcError>, StackHandle);
 
 #[derive(Debug)]
 enum ProcError {
@@ -46,13 +47,42 @@ impl Display for ProcError {
 }
 
 pub async fn eval_and_flush(process: Process) {
-    //let names_stack = NamesStack::new();
-    let names_stack_handle = StackHandle::new();
-    let to_flush_res = eval_process(Box::new(process), names_stack_handle, None).await;
+    let (names_stack_handle, _) = StackHandle::new();
+    let to_flush_res = eval_process(Box::new(process), names_stack_handle.clone(), None).await;
 
     match to_flush_res {
-        (Ok(to_flush), _) => println!("{}", to_flush.as_str()),
-        (Err(err), names_stack_handle) => println!("{}", err), // TODO: print stack trace
+        (Ok(to_flush), names_stack_handle) => {
+            println!("{}", to_flush.as_str());
+
+            match names_stack_handle.get_stack_trace().await {
+                StackMessageResponse::StackTrace(stack_trace) => println!("{}", stack_trace),
+                _ => (),
+            }
+        }
+        (Err(err), names_stack_handle) => {
+            println!("{}", err);
+
+            match names_stack_handle.get_stack_trace().await {
+                StackMessageResponse::StackTrace(stack_trace) => println!("{}", stack_trace),
+                _ => (),
+            }
+        }
+    };
+
+    // idle
+    loop {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        match names_stack_handle.get_stack_trace().await {
+            StackMessageResponse::StackTrace(stack_trace) => println!("{}", stack_trace),
+            _ => (),
+        }
+    }
+}
+
+fn make_value_flushable(v: ContextValue) -> ToFlush {
+    match v {
+        ContextValue::I32(n) => n.to_string(),
+        ContextValue::Channel(_) => "@".to_owned(),
     }
 }
 
@@ -66,10 +96,12 @@ async fn eval_process(
     process: Box<Process>,
     names_stack_handle: StackHandle,
     parent_id: Option<ActorId>,
-) -> (Result<ToFlush, ProcError>, StackHandle) {
-    let proc_ref: &Process = Box::borrow(&process);
-    match *proc_ref {
-        Process::Expr(expr) => (eval_expr(&expr), names_stack_handle),
+) -> EvalResult {
+    match *process {
+        Process::Expr(expr) => (
+            eval_expr(&expr).map(make_value_flushable),
+            names_stack_handle,
+        ),
         Process::Loop(proc) => {
             loop {
                 let handle_clone = names_stack_handle.clone();
@@ -86,7 +118,10 @@ async fn eval_process(
             //"".to_owned()
         }
         Process::ChanDeclaration(name_id, proc) => {
-            let actor_id_res = make_actor_id(&parent_id, &process);
+            let actor_id_res = make_actor_id(
+                &parent_id,
+                &Process::ChanDeclaration(name_id.clone(), proc.clone()),
+            );
             match actor_id_res {
                 ExtendedOption::One(aid) => {
                     names_stack_handle.push_channel(aid.clone(), name_id).await;
@@ -99,35 +134,23 @@ async fn eval_process(
             // This is necessary due to rustc typecheck. The clean way would be
             // pass the future returned by `eval_process` directly to spawn
             // function
-            fn eval_wrap(
+            fn spawn_eval(
                 process: Box<Process>,
                 names_stack_handle: StackHandle,
                 parent_id: Option<ActorId>,
-            ) -> JoinHandle<(Result<ToFlush, ProcError>, StackHandle)> {
+            ) -> JoinHandle<EvalResult> {
                 tokio::spawn(eval_process(process, names_stack_handle, parent_id))
             }
-            match make_actor_id(&parent_id, &process) {
+            match make_actor_id(&parent_id, &Process::Par(proc1.clone(), proc2.clone())) {
                 ExtendedOption::Two(aid1, aid2) => {
                     names_stack_handle
                         .push_two_aid(aid1.clone(), aid2.clone())
                         .await;
 
-                    let handle_clone = names_stack_handle.clone();
-                    let join1 = eval_wrap(proc1, names_stack_handle, Some(aid1));
-                    let join2 = eval_wrap(proc2, handle_clone, Some(aid2));
+                    let _join1 = spawn_eval(proc1, names_stack_handle.clone(), Some(aid1));
+                    let _join2 = spawn_eval(proc2, names_stack_handle.clone(), Some(aid2));
 
-                    let res1 = join1.await.unwrap();
-                    let res2 = join2.await.unwrap();
-
-                    match (res1, res2) {
-                        ((Ok(v1), names_stack_handle), (Ok(v2), _)) => (
-                            Ok(["<", v1.as_str(), ",", v2.as_str(), ">"].concat()),
-                            // Completely arbitrary: returning the first stack handle
-                            names_stack_handle,
-                        ),
-                        ((Err(e1), names_stack_handle), _) => (Err(e1), names_stack_handle),
-                        (_, (Err(e2), names_stack_handle)) => (Err(e2), names_stack_handle),
-                    }
+                    (Ok("".to_owned()), names_stack_handle)
                 }
                 e => (Err(ProcError::ExpectingTwoAid(e)), names_stack_handle),
             }
@@ -150,7 +173,7 @@ async fn eval_process(
                         .await
                         .and_with_channel(
                             |sender| {
-                                let _ = sender.send(context::Value::I32(42) /*val*/);
+                                let _ = sender.send(ContextValue::I32(42) /*val*/);
                             },
                             ProcError::NameIdNotFound(name_id),
                         );
@@ -162,20 +185,49 @@ async fn eval_process(
                         Err(proc_err) => (Err(proc_err), names_stack_handle),
                     }
                 }
-                Err(_) => (expr_res, names_stack_handle),
+                Err(_) => (expr_res.map(make_value_flushable), names_stack_handle),
             }
         }
         Process::Receive(var_id, name_id, continuation) => {
             let parent_id_clone = parent_id.clone();
-            // If there is no parent id, then no declaration for anything
-            // has been done, so the name_id cannot be found
+            // If there is no parent id, then no declaration for anything has
+            // been done, so the name_id cannot be found
             if parent_id_clone.is_none() {
                 return (Err(ProcError::NameIdNotFound(name_id)), names_stack_handle);
             }
-            let actor_id_res = make_actor_id(&parent_id, &process);
+            let actor_id_res = make_actor_id(
+                &parent_id,
+                &Process::Receive(var_id.clone(), name_id.clone(), continuation.clone()),
+            );
 
-            todo!()
-            //match actor_id_res {}
+            match actor_id_res {
+                ExtendedOption::One(aid) => {
+                    let lookup_res = names_stack_handle
+                        .lookup_channel(aid.clone(), name_id.clone())
+                        .await
+                        .and_with_channel(
+                            |sender| sender.subscribe(),
+                            ProcError::NameIdNotFound(name_id.clone()),
+                        );
+
+                    match lookup_res {
+                        Err(err) => (Err(err), names_stack_handle),
+                        Ok(mut receiver) => {
+                            let val = receiver.recv().await.unwrap(); //TODO: eval error
+                            names_stack_handle
+                                .push_value(aid.clone(), var_id, val)
+                                .await;
+                            Box::pin(eval_process(
+                                continuation,
+                                names_stack_handle,
+                                Some(aid.clone()),
+                            ))
+                            .await
+                        }
+                    }
+                }
+                e => (Err(ProcError::ExpectingOneAid(e)), names_stack_handle),
+            }
         }
     }
 }
@@ -206,18 +258,48 @@ struct StackMessage {
 }
 
 enum StackMessagePayload {
-    PushAid { aid: ActorId },
-    PushTwoAid { aid1: ActorId, aid2: ActorId },
-    PushChannel { aid: ActorId, name_id: String },
-    Lookup { aid: ActorId, name_id: String },
-    LookupChannel { aid: ActorId, name_id: String },
+    PushAid {
+        aid: ActorId,
+    },
+    PushTwoAid {
+        aid1: ActorId,
+        aid2: ActorId,
+    },
+    PushChannel {
+        aid: ActorId,
+        name_id: NameId,
+    },
+    PushValue {
+        aid: ActorId,
+        name_id: NameId,
+        value: ContextValue,
+    },
+    Lookup {
+        aid: ActorId,
+        name_id: NameId,
+    },
+    LookupChannel {
+        aid: ActorId,
+        name_id: NameId,
+    },
+    GetStackTrace,
+    /*
+    SpawnTask {
+        future: Pin<Box<dyn Future<Output = EvalResult> + Send>>,
+    },
+    SpawnMultipleTasks {
+        futures:
+            Vec<Pin<Box<dyn Future<Output = EvalResult> + Send>>>,
+    },
+    */
 }
 
 enum StackMessageResponse {
     Nothing,
-    StackValue(context::Value),
+    StackValue(ContextValue),
     // This is just a shortcut for StackValue with unwrapped channel
     StackChannel(context::ChannelData),
+    StackTrace(String),
 }
 
 impl StackMessageResponse {
@@ -226,9 +308,8 @@ impl StackMessageResponse {
         F: FnOnce(ChannelData) -> U,
     {
         match self {
-            StackMessageResponse::Nothing => Err(default),
-            StackMessageResponse::StackValue(_) => Err(default),
             StackMessageResponse::StackChannel(sender) => Ok(continuation(sender)),
+            _ => Err(default),
         }
     }
 }
@@ -238,6 +319,14 @@ impl StackActor {
         match msg.payload {
             StackMessagePayload::PushChannel { aid, name_id } => {
                 self.names_stack.push_channel(aid, name_id);
+                let _ = msg.respond_to.send(StackMessageResponse::Nothing);
+            }
+            StackMessagePayload::PushValue {
+                aid,
+                name_id,
+                value,
+            } => {
+                self.names_stack.push(aid, name_id, value);
                 let _ = msg.respond_to.send(StackMessageResponse::Nothing);
             }
             StackMessagePayload::Lookup { aid, name_id } => {
@@ -257,13 +346,30 @@ impl StackActor {
             }
             StackMessagePayload::LookupChannel { aid, name_id } => {
                 let _ = match self.names_stack.lookup_channel(aid, name_id) {
-                    Some(context::Value::Channel(data)) => msg
+                    Some(ContextValue::Channel(data)) => msg
                         .respond_to
                         .send(StackMessageResponse::StackChannel(data)),
                     Some(_) => msg.respond_to.send(StackMessageResponse::Nothing),
                     None => msg.respond_to.send(StackMessageResponse::Nothing),
                 };
             }
+            StackMessagePayload::GetStackTrace => {
+                let stack_trace = self.names_stack.draw();
+                let _ = msg
+                    .respond_to
+                    .send(StackMessageResponse::StackTrace(stack_trace));
+            } /*
+              StackMessagePayload::SpawnTask { future } => {
+                  self.jobs_handler.spawn(future);
+                  let _ = msg.respond_to.send(StackMessageResponse::Nothing);
+              }
+              StackMessagePayload::SpawnMultipleTasks { futures } => {
+                  futures.into_iter().for_each(|future| {
+                      self.jobs_handler.spawn(future);
+                  });
+                  let _ = msg.respond_to.send(StackMessageResponse::Nothing);
+              }
+              */
         }
     }
 }
@@ -275,16 +381,28 @@ async fn run_stack_actor(mut actor: StackActor) {
 }
 
 impl StackHandle {
-    fn new() -> Self {
-        let (sender, receiver) = tokio::sync::mpsc::channel(500);
+    fn new() -> (Self, JoinHandle<()>) {
+        let (sender, receiver) = tokio::sync::mpsc::channel(500); //TODO: remove hardcoding
         let actor = StackActor {
             receiver,
             names_stack: NamesStack::new(),
+            //jobs_handler: JoinSet::new(),
         };
 
-        tokio::spawn(run_stack_actor(actor));
+        let join = tokio::spawn(run_stack_actor(actor));
 
-        Self { sender }
+        (Self { sender }, join)
+    }
+
+    async fn get_stack_trace(&self) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::GetStackTrace,
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
     }
 
     async fn push_aid(&self, aid: ActorId) -> StackMessageResponse {
@@ -309,10 +427,30 @@ impl StackHandle {
         recv.await.expect("Stack actor task has been killed")
     }
 
-    async fn push_channel(&self, aid: ActorId, name_id: String) -> StackMessageResponse {
+    async fn push_channel(&self, aid: ActorId, name_id: NameId) -> StackMessageResponse {
         let (send, recv) = oneshot::channel();
         let msg = StackMessage {
             payload: StackMessagePayload::PushChannel { aid, name_id },
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+
+    async fn push_value(
+        &self,
+        aid: ActorId,
+        name_id: NameId,
+        value: ContextValue,
+    ) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::PushValue {
+                aid,
+                name_id,
+                value,
+            },
             respond_to: send,
         };
 
@@ -341,25 +479,61 @@ impl StackHandle {
         let _ = self.sender.send(msg).await;
         recv.await.expect("Stack actor task has been killed")
     }
+
+    /*
+    async fn add_join_handle(&self, handle: JoinHandle<EvalResult>) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::AddJoinHandle { handle },
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+
+    async fn add_multiple_join_handles(
+        &self,
+        handles: Vec<JoinHandle<EvalResult>>,
+    ) -> StackMessageResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = StackMessage {
+            payload: StackMessagePayload::AddMultipleJoinHandles { handles },
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Stack actor task has been killed")
+    }
+    */
 }
 
-fn eval_expr(expr: &Expression) -> Result<ToFlush, ProcError> {
+fn eval_expr(expr: &Expression) -> Result<ContextValue, ProcError> {
     match expr {
-        Expression::Val(val) => Ok(eval_value(val)),
-        Expression::IntExpr(expr) => eval_int_expr(expr).map(|n| n.to_string()).into(),
+        Expression::Val(val) => Ok(ContextValue::I32(42)),
+        Expression::IntExpr(expr) => eval_int_expr(expr)
+            .map(|n| ContextValue::I32(n))
+            .to_result(),
     }
 }
 
-fn eval_value(val: &Value) -> ToFlush {
+fn eval_single_value(val: &Value) -> ContextValue {
     match val {
         Value::Str(str) => {
             let wrapper = "\"";
             let pieces = [wrapper, str.as_str(), wrapper];
-            pieces.concat()
+            pieces.concat();
+            ContextValue::I32(42)
         }
-        Value::Char(_) => todo!(),
-        Value::Int32(num) => num.to_string(),
-        Value::Float32(fl) => fl.to_string(),
+        Value::Char(char) => {
+            char.to_string();
+            ContextValue::I32(42)
+        }
+        Value::Int32(num) => ContextValue::I32(*num),
+        Value::Float32(fl) => {
+            fl.to_string();
+            ContextValue::I32(42)
+        }
     }
 }
 
@@ -505,7 +679,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_add_name() {
-        let names_stack_handle = StackHandle::new();
+        let (names_stack_handle, _) = StackHandle::new();
         let process = Process::ChanDeclaration(
             "a_name".to_string(),
             Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
