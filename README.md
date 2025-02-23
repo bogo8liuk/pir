@@ -7,6 +7,7 @@ made with Rust along with Tokio runtime.
 ## TODO
 This is a (probably non-complete) list of todos:
 - [ ] massive unit tests for evaluation
+- [ ] adding more examples
 - [ ] better errors, especially on parsing (if possible write unit tests on them)
 - [ ] adding more data types: characters, strings, floating point numbers, etc.
 - [ ] adding expressions with identifiers
