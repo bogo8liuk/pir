@@ -315,7 +315,7 @@ mod tests {
             &Process::Receive(
                 "v".to_owned(),
                 "w".to_owned(),
-                Box::new(Process::Expr(Expression::Val(Value::Char(57)))),
+                Box::new(Process::Expr(Expression::Val(Value::Char('9')))),
             ),
         )
         .unwrap_one();

@@ -657,6 +657,8 @@ fn eval_int_expr(expr: &IntExpr) -> ExprResult<i32> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use tokio::sync::{
         broadcast,
         mpsc::{self},
@@ -685,8 +687,14 @@ mod tests {
             Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
         );
 
-        let (_, names_stack_handle) =
-            eval_process(Box::new(process.clone()), names_stack_handle, None).await;
+        // Using another thread in order not to block the test process
+        tokio::spawn(eval_process(
+            Box::new(process.clone()),
+            names_stack_handle.clone(),
+            None,
+        ));
+        // Waiting for things to happen
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let aid = ActorId::root(&process).unwrap_one();
         let has_stack_value = match names_stack_handle.lookup(aid, "a_name".to_owned()).await {
