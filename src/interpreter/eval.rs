@@ -706,4 +706,33 @@ mod tests {
             "Expected 'a_name' to be in the names stack"
         );
     }
+
+    #[tokio::test]
+    async fn should_not_add_infinitely() {
+        let (names_stack_handle, _) = StackHandle::new();
+        let sub_process = Process::ChanDeclaration(
+            "a_name".to_string(),
+            Box::new(Process::Expr(Expression::IntExpr(IntExpr::Lit(7)))),
+        );
+        let process = Process::Loop(Box::new(sub_process.clone()));
+
+        // Using another thread in order not to block the test process
+        tokio::spawn(eval_process(
+            Box::new(process.clone()),
+            names_stack_handle.clone(),
+            None,
+        ));
+        // Waiting for things to happen
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let aid = ActorId::root(&sub_process).unwrap_one();
+        let has_stack_value = match names_stack_handle.lookup(aid, "a_name".to_owned()).await {
+            StackMessageResponse::StackValue(_) => true,
+            _ => false,
+        };
+        assert!(
+            has_stack_value,
+            "Expected 'a_name' to be in the names stack"
+        );
+    }
 }
